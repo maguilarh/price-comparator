@@ -16,6 +16,11 @@ type DuckDuckGoSearchResult = {
   source: string;
 };
 
+type RawDetectedLink = {
+  href: string;
+  text: string;
+};
+
 const searchBaseUrl = "https://html.duckduckgo.com/html/";
 const maxSearchResults = 12;
 const maxAcceptedOffersPerProduct = 10;
@@ -189,18 +194,22 @@ async function fetchWithTimeout(url: string, timeoutMs: number, accept: string) 
   }
 }
 
-async function fetchSearchResults(query: string) {
+async function fetchSearchResults(query: string, launchedQueryOverride?: string) {
+  const launchedQuery = launchedQueryOverride ?? `${query} comprar tienda Espana precio`;
   const params = new URLSearchParams({
-    q: `${query} comprar tienda Espana precio`
+    q: launchedQuery
   });
   const requestUrl = `${searchBaseUrl}?${params.toString()}`;
   const response = await fetchWithTimeout(requestUrl, searchTimeoutMs, "text/html");
+  const httpStatus = response.status;
 
   if (!response.ok) {
     throw new Error(`Respuesta HTTP ${response.status} en busqueda web.`);
   }
 
   const html = await response.text();
+  const htmlLength = html.length;
+  const htmlPreview = html.slice(0, 1000);
 
   if (!html.trim()) {
     throw new Error("Respuesta vacia en busqueda web.");
@@ -211,22 +220,43 @@ async function fetchSearchResults(query: string) {
   const snippetRegex = /<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
   const anchors = Array.from(html.matchAll(anchorRegex));
   const snippets = Array.from(html.matchAll(snippetRegex));
+  const genericAnchorRegex = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const genericAnchors = Array.from(html.matchAll(genericAnchorRegex));
 
-  const results: DuckDuckGoSearchResult[] = anchors.slice(0, maxSearchResults).map((match, index) => {
-    const url = resolveDuckDuckGoUrl(decodeHtmlEntities(match[1]));
-    const title = stripHtml(match[2]);
-    const snippet = snippets[index] ? stripHtml(snippets[index][1]) : "";
+  const firstDetectedLinks: RawDetectedLink[] =
+    (anchors.length > 0 ? anchors : genericAnchors)
+      .slice(0, 10)
+      .map((match) => ({
+        href: resolveDuckDuckGoUrl(decodeHtmlEntities(match[1])),
+        text: stripHtml(match[2]).slice(0, 160)
+      }));
 
-    return {
-      title,
-      url,
-      snippet,
-      source: getSupplierFromUrl(url)
-    };
-  });
+  const sourceAnchors = anchors.length > 0 ? anchors : genericAnchors;
+
+  const results: DuckDuckGoSearchResult[] = sourceAnchors
+    .slice(0, maxSearchResults)
+    .map((match, index) => {
+      const url = resolveDuckDuckGoUrl(decodeHtmlEntities(match[1]));
+      const title = stripHtml(match[2]);
+      const snippet = snippets[index] ? stripHtml(snippets[index][1]) : "";
+
+      return {
+        title,
+        url,
+        snippet,
+        source: getSupplierFromUrl(url)
+      };
+    })
+    .filter((result) => Boolean(result.url) && Boolean(result.title));
 
   return {
+    launchedQuery,
     requestUrl,
+    httpStatus,
+    htmlLength,
+    htmlPreview,
+    linksDetectedBeforeFilters: sourceAnchors.length,
+    firstDetectedLinks,
     results
   };
 }
@@ -267,7 +297,12 @@ async function fetchOfferDetails(result: DuckDuckGoSearchResult) {
 export const webSearchProductsProvider: ProductProvider = {
   id: webSearchProviderId,
   label: "Web Search",
-  async fetchOffers(queries: ProductQuery[]) {
+  async fetchOffers(
+    queries: ProductQuery[],
+    options?: {
+      debugEnabled?: boolean;
+    }
+  ) {
     const schedule = createRateLimiter(minIntervalMs);
     const errors: ProviderError[] = [];
     const offers: ProviderProductOffer[] = [];
@@ -276,21 +311,78 @@ export const webSearchProductsProvider: ProductProvider = {
     for (const query of queries) {
       const consultedSources = new Set<string>();
       const discarded: ProviderQueryDebug["discarded"] = [];
+      const discardedByCause: Record<string, number> = {
+        no_domain: 0,
+        non_spanish_domain: 0,
+        blocked_domain: 0,
+        missing_price: 0,
+        irrelevant_result: 0
+      };
       const queryErrors: string[] = [];
       let requestUrl = "";
+      let debugPreviewQuery = "";
+      let debugPreviewLinks: RawDetectedLink[] = [];
+      let launchedQuery = "";
+      let httpStatus: number | undefined;
+      let htmlLength = 0;
+      let htmlPreview = "";
       let rawResultsCount = 0;
+      let linksDetectedBeforeFilters = 0;
+      let firstDetectedLinks: RawDetectedLink[] = [];
       let acceptedCount = 0;
 
       try {
+        if (options?.debugEnabled) {
+          try {
+            const previewSearch = await schedule(() =>
+              fetchSearchResults(query.trim(), `${query.trim()} comprar`)
+            );
+            debugPreviewQuery = previewSearch.launchedQuery;
+            debugPreviewLinks = previewSearch.firstDetectedLinks;
+
+            console.info("[products][websearch] debug:preview", {
+              product: query.trim(),
+              debugPreviewQuery,
+              linksDetected: previewSearch.linksDetectedBeforeFilters,
+              previewLinks: debugPreviewLinks
+            });
+          } catch (previewError) {
+            const previewMessage =
+              previewError instanceof Error
+                ? previewError.message
+                : "Error desconocido en la vista previa de debug.";
+            queryErrors.push(`Debug preview: ${previewMessage}`);
+
+            console.warn("[products][websearch] debug:preview:error", {
+              product: query.trim(),
+              error: previewMessage
+            });
+          }
+        }
+
         const search = await schedule(() => fetchSearchResults(query.trim()));
+        launchedQuery = search.launchedQuery;
         requestUrl = search.requestUrl;
+        httpStatus = search.httpStatus;
+        htmlLength = search.htmlLength;
+        htmlPreview = search.htmlPreview;
         rawResultsCount = search.results.length;
+        linksDetectedBeforeFilters = search.linksDetectedBeforeFilters;
+        firstDetectedLinks = search.firstDetectedLinks;
 
         console.info("[products][websearch] search:start", {
           product: query.trim(),
+          launchedQuery,
           requestUrl,
+          httpStatus,
+          htmlLength,
+          linksDetectedBeforeFilters,
           rawResultsCount
         });
+
+        if (linksDetectedBeforeFilters === 0) {
+          throw new Error("El parser no detecto enlaces en el HTML recibido.");
+        }
 
         if (search.results.length === 0) {
           throw new Error("La busqueda web no devolvio resultados.");
@@ -322,6 +414,32 @@ export const webSearchProductsProvider: ProductProvider = {
             }
           } catch (error) {
             const message = error instanceof Error ? error.message : "Error desconocido.";
+            const hostname = (() => {
+              try {
+                return new URL(result.url).hostname;
+              } catch {
+                return "";
+              }
+            })();
+            const normalizedMessage = message.toLowerCase();
+
+            if (!hostname) {
+              discardedByCause.no_domain += 1;
+            } else if (normalizedMessage.includes("no parece espanola")) {
+              discardedByCause.non_spanish_domain += 1;
+            } else if (
+              normalizedMessage.includes("403") ||
+              normalizedMessage.includes("401") ||
+              normalizedMessage.includes("bloque") ||
+              normalizedMessage.includes("forbidden")
+            ) {
+              discardedByCause.blocked_domain += 1;
+            } else if (normalizedMessage.includes("precio valido")) {
+              discardedByCause.missing_price += 1;
+            } else {
+              discardedByCause.irrelevant_result += 1;
+            }
+
             discarded.push({
               source: result.source,
               url: result.url,
@@ -351,30 +469,48 @@ export const webSearchProductsProvider: ProductProvider = {
           providerId: webSearchProviderId,
           providerLabel: "Web Search",
           searched: true,
+          debugPreviewQuery,
+          debugPreviewLinks,
+          launchedQuery,
           requestUrl,
+          httpStatus,
+          htmlLength,
+          htmlPreview,
           consultedSources: Array.from(consultedSources),
           resultCount: rawResultsCount,
+          linksDetectedBeforeFilters,
+          firstDetectedLinks,
           acceptedCount,
           discardedCount: discarded.length,
+          discardedByCause,
           discarded,
           errors: queryErrors,
           usedMockData: false,
           failureStage:
             acceptedCount === 0
-              ? rawResultsCount === 0
-                ? "no_results"
-                : discarded.length > 0
-                  ? "filters"
-                  : "network"
+              ? htmlLength === 0
+                ? "empty_body"
+                : linksDetectedBeforeFilters === 0
+                  ? "html_received_no_links"
+                  : rawResultsCount === 0
+                    ? "no_valid_store_results"
+                    : discarded.length > 0
+                      ? "links_found_but_filtered"
+                      : "no_valid_store_results"
               : "none"
         });
 
         console.info("[products][websearch] search:summary", {
           product: query.trim(),
+          launchedQuery,
           requestUrl,
+          httpStatus,
+          htmlLength,
+          linksDetectedBeforeFilters,
           resultsFound: rawResultsCount,
           acceptedCount,
           discardedCount: discarded.length,
+          discardedByCause,
           consultedSources: Array.from(consultedSources)
         });
       } catch (error) {
@@ -392,29 +528,46 @@ export const webSearchProductsProvider: ProductProvider = {
           providerId: webSearchProviderId,
           providerLabel: "Web Search",
           searched: true,
+          debugPreviewQuery,
+          debugPreviewLinks,
+          launchedQuery,
           requestUrl,
+          httpStatus,
+          htmlLength,
+          htmlPreview,
           consultedSources: Array.from(consultedSources),
           resultCount: rawResultsCount,
+          linksDetectedBeforeFilters,
+          firstDetectedLinks,
           acceptedCount,
           discardedCount: discarded.length,
+          discardedByCause,
           discarded,
           errors: queryErrors,
           usedMockData: false,
           failureStage:
             message.includes("Timeout") || message.includes("red")
-              ? "network"
-              : message.includes("HTTP")
-                ? "http"
-                : message.includes("parse")
-                  ? "parsing"
-                  : rawResultsCount === 0
-                    ? "no_results"
-                    : "filters"
+              ? "http_error"
+              : message.includes("Respuesta HTTP")
+                ? "http_error"
+                : message.includes("vacia")
+                  ? "empty_body"
+                  : message.includes("no detecto enlaces")
+                    ? "html_received_no_links"
+                    : linksDetectedBeforeFilters > 0 && discarded.length > 0
+                      ? "links_found_but_filtered"
+                      : rawResultsCount === 0
+                        ? "no_valid_store_results"
+                        : "parsing"
         });
 
         console.error("[products][websearch] search:error", {
           product: query.trim(),
+          launchedQuery,
           requestUrl,
+          httpStatus,
+          htmlLength,
+          linksDetectedBeforeFilters,
           error: message
         });
       }

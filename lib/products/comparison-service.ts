@@ -10,6 +10,7 @@ import {
 type CompareProductsParams = {
   queries: ProductQuery[];
   providerIds: string[];
+  debugEnabled?: boolean;
 };
 
 type ComparableOffer = ProviderProductOffer & {
@@ -92,7 +93,8 @@ function buildComparisons(offers: ComparableOffer[]): ProductComparisonResult[] 
 
 export async function compareProductsFromProviders({
   queries,
-  providerIds
+  providerIds,
+  debugEnabled
 }: CompareProductsParams) {
   const providers = getProvidersByIds(providerIds);
 
@@ -101,7 +103,7 @@ export async function compareProductsFromProviders({
   }
 
   const resultsByProvider = await Promise.all(
-    providers.map((provider) => provider.fetchOffers(queries))
+    providers.map((provider) => provider.fetchOffers(queries, { debugEnabled }))
   );
 
   const comparableOffers = resultsByProvider

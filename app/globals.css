@@ -377,6 +377,18 @@ select {
   margin-top: 0.85rem;
 }
 
+.debug-pre {
+  margin: 0.6rem 0 0;
+  padding: 0.8rem;
+  overflow-x: auto;
+  border-radius: 12px;
+  background: rgba(31, 26, 23, 0.06);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 @media (max-width: 860px) {
   .grid {
     grid-template-columns: 1fr;

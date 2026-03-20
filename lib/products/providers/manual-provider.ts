@@ -10,16 +10,28 @@ export const manualProviderId = "manual";
 export const manualProductsProvider: ProductProvider = {
   id: manualProviderId,
   label: "Carga manual",
-  async fetchOffers(queries: ProductQuery[]) {
+  async fetchOffers(
+    queries: ProductQuery[],
+    _options?: {
+      debugEnabled?: boolean;
+    }
+  ) {
     const debugEntries: ProviderQueryDebug[] = queries.map((query) => ({
       product: query.trim(),
       providerId: manualProviderId,
       providerLabel: "Carga manual",
       searched: false,
+      launchedQuery: query.trim(),
       consultedSources: [],
+      httpStatus: undefined,
+      htmlLength: 0,
+      htmlPreview: "",
       resultCount: 0,
+      linksDetectedBeforeFilters: 0,
+      firstDetectedLinks: [],
       acceptedCount: 0,
       discardedCount: 0,
+      discardedByCause: {},
       discarded: [],
       errors: [
         "Proveedor sin busqueda web activa. No genera resultados reales sin un proveedor externo."

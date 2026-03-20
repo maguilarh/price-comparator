@@ -239,7 +239,12 @@ async function fetchSerpApiResults(query: ProductQuery) {
 export const serpApiProductsProvider: ProductProvider = {
   id: serpApiProviderId,
   label: "SerpApi Google Shopping",
-  async fetchOffers(queries: ProductQuery[]) {
+  async fetchOffers(
+    queries: ProductQuery[],
+    _options?: {
+      debugEnabled?: boolean;
+    }
+  ) {
     const schedule = createRateLimiter(
       getEnvNumber("SERPAPI_MIN_INTERVAL_MS", defaultMinIntervalMs)
     );

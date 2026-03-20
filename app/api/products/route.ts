@@ -21,7 +21,8 @@ export async function POST(request: Request) {
 
     const comparison = await compareProductsFromProviders({
       queries: body.products,
-      providerIds: getDefaultProviderIds()
+      providerIds: getDefaultProviderIds(),
+      debugEnabled
     });
 
     return NextResponse.json({

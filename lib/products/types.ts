@@ -21,11 +21,26 @@ export type ProviderQueryDebug = {
   providerId: string;
   providerLabel: string;
   searched: boolean;
+  debugPreviewQuery?: string;
+  debugPreviewLinks?: Array<{
+    href: string;
+    text: string;
+  }>;
+  launchedQuery?: string;
   requestUrl?: string;
+  httpStatus?: number;
+  htmlLength?: number;
+  htmlPreview?: string;
   consultedSources: string[];
   resultCount: number;
+  linksDetectedBeforeFilters?: number;
+  firstDetectedLinks?: Array<{
+    href: string;
+    text: string;
+  }>;
   acceptedCount: number;
   discardedCount: number;
+  discardedByCause?: Record<string, number>;
   discarded: Array<{
     source?: string;
     url?: string;
@@ -33,7 +48,15 @@ export type ProviderQueryDebug = {
   }>;
   errors: string[];
   usedMockData: boolean;
-  failureStage?: "network" | "http" | "parsing" | "filters" | "no_results" | "mock" | "none";
+  failureStage?:
+    | "http_error"
+    | "empty_body"
+    | "html_received_no_links"
+    | "links_found_but_filtered"
+    | "no_valid_store_results"
+    | "parsing"
+    | "mock"
+    | "none";
 };
 
 export type ProductComparisonResult = {
@@ -50,7 +73,12 @@ export type ProductComparisonResult = {
 export type ProductProvider = {
   id: string;
   label: string;
-  fetchOffers: (queries: ProductQuery[]) => Promise<{
+  fetchOffers: (
+    queries: ProductQuery[],
+    options?: {
+      debugEnabled?: boolean;
+    }
+  ) => Promise<{
     offers: ProviderProductOffer[];
     errors: ProviderError[];
     debugEntries: ProviderQueryDebug[];

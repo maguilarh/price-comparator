@@ -44,11 +44,26 @@ type ComparisonResponse = {
       providerId: string;
       providerLabel: string;
       searched: boolean;
+      debugPreviewQuery?: string;
+      debugPreviewLinks?: Array<{
+        href: string;
+        text: string;
+      }>;
       requestUrl?: string;
       consultedSources: string[];
+      launchedQuery?: string;
+      httpStatus?: number;
+      htmlLength?: number;
+      htmlPreview?: string;
       resultCount: number;
+      linksDetectedBeforeFilters?: number;
+      firstDetectedLinks?: Array<{
+        href: string;
+        text: string;
+      }>;
       acceptedCount: number;
       discardedCount: number;
+      discardedByCause?: Record<string, number>;
       discarded: Array<{
         source?: string;
         url?: string;
@@ -56,7 +71,15 @@ type ComparisonResponse = {
       }>;
       errors: string[];
       usedMockData: boolean;
-      failureStage?: "network" | "http" | "parsing" | "filters" | "no_results" | "mock" | "none";
+      failureStage?:
+        | "http_error"
+        | "empty_body"
+        | "html_received_no_links"
+        | "links_found_but_filtered"
+        | "no_valid_store_results"
+        | "parsing"
+        | "mock"
+        | "none";
     }>;
     totals?: {
       productsRequested: number;
@@ -198,19 +221,21 @@ export default function HomePage() {
   )?.failureStage;
 
   const failureStageLabel =
-    detectedFailureStage === "network"
-      ? "Error de red o timeout del servidor"
-      : detectedFailureStage === "http"
-        ? "Respuesta HTTP incorrecta del proveedor"
-        : detectedFailureStage === "parsing"
-          ? "Fallo al parsear la respuesta"
-          : detectedFailureStage === "filters"
-            ? "Todos los resultados se descartaron por filtros"
-            : detectedFailureStage === "no_results"
-              ? "La busqueda no devolvio resultados"
-              : detectedFailureStage === "mock"
-                ? "Proveedor sin busqueda web real"
-                : null;
+    detectedFailureStage === "http_error"
+      ? "Error HTTP o de red al consultar la fuente"
+      : detectedFailureStage === "empty_body"
+        ? "La respuesta HTTP llego, pero el HTML estaba vacio"
+        : detectedFailureStage === "html_received_no_links"
+          ? "Se recibio HTML, pero el parser no detecto enlaces"
+          : detectedFailureStage === "links_found_but_filtered"
+            ? "Se detectaron enlaces, pero todos fueron descartados"
+            : detectedFailureStage === "no_valid_store_results"
+              ? "No hubo resultados validos de tienda tras el parsing"
+              : detectedFailureStage === "parsing"
+                ? "Fallo al parsear la respuesta"
+                : detectedFailureStage === "mock"
+                  ? "Proveedor sin busqueda web real"
+                  : null;
   const missingProducts =
     debugData?.requestedProducts?.filter(
       (product) => !comparisons.some((comparison) => comparison.productName === product)
@@ -473,13 +498,57 @@ export default function HomePage() {
                   <p>
                     Proveedor: {entry.providerLabel} | Busqueda web: {entry.searched ? "Si" : "No"}
                   </p>
+                  {entry.debugPreviewQuery ? (
+                    <div className="debug-subpanel">
+                      <strong>Vista previa sin filtros</strong>
+                      <p>Query debug: {entry.debugPreviewQuery}</p>
+                      {entry.debugPreviewLinks && entry.debugPreviewLinks.length > 0 ? (
+                        <ul>
+                          {entry.debugPreviewLinks.map((item, itemIndex) => (
+                            <li key={`${entry.product}-preview-link-${itemIndex}`}>
+                              {item.href} | {item.text || "Sin texto"}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p>No se detectaron enlaces en la vista previa cruda del buscador.</p>
+                      )}
+                    </div>
+                  ) : null}
+                  <p>Query lanzada: {entry.launchedQuery || "No disponible"}</p>
                   <p>
                     Fase del fallo:{" "}
                     {entry.failureStage && entry.failureStage !== "none"
                       ? entry.failureStage
                       : "sin fallo detectado"}
                   </p>
+                  <p>Status HTTP: {typeof entry.httpStatus === "number" ? entry.httpStatus : "n/d"}</p>
+                  <p>Longitud HTML: {typeof entry.htmlLength === "number" ? entry.htmlLength : 0}</p>
+                  <p>Enlaces detectados antes de filtros: {entry.linksDetectedBeforeFilters ?? 0}</p>
                   <p>URL/Fuente consultada: {entry.requestUrl || "No aplica"}</p>
+                  {entry.htmlPreview ? (
+                    <div className="debug-subpanel">
+                      <strong>Primeros 1000 caracteres del HTML</strong>
+                      <pre className="debug-pre">{entry.htmlPreview}</pre>
+                    </div>
+                  ) : null}
+                  {entry.firstDetectedLinks && entry.firstDetectedLinks.length > 0 ? (
+                    <div className="debug-subpanel">
+                      <strong>Primeros 10 enlaces detectados</strong>
+                      <ul>
+                        {entry.firstDetectedLinks.map((item, itemIndex) => (
+                          <li key={`${entry.product}-link-${itemIndex}`}>
+                            {item.href} | {item.text || "Sin texto"}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : entry.linksDetectedBeforeFilters === 0 ? (
+                    <div className="debug-subpanel">
+                      <strong>Parser</strong>
+                      <p>No se detectaron enlaces candidatos en el HTML recibido.</p>
+                    </div>
+                  ) : null}
                   <p>
                     Tiendas consultadas:{" "}
                     {entry.consultedSources.length > 0
@@ -490,6 +559,18 @@ export default function HomePage() {
                     Resultados encontrados: {entry.resultCount} | Aceptados: {entry.acceptedCount} |
                     Descartados: {entry.discardedCount}
                   </p>
+                  {entry.discardedByCause ? (
+                    <div className="debug-subpanel">
+                      <strong>Descartes por causa</strong>
+                      <ul>
+                        {Object.entries(entry.discardedByCause).map(([cause, count]) => (
+                          <li key={`${entry.product}-cause-${cause}`}>
+                            {cause}: {count}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                   {entry.errors.length > 0 ? (
                     <div className="debug-subpanel">
                       <strong>Errores</strong>
