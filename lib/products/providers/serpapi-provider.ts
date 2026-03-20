@@ -120,6 +120,33 @@ function isSpanishStore(result: SerpApiShoppingResult, url: string) {
   return isSpanishHost(hostname) || hasSpanishSignals;
 }
 
+function getAvailability(result: SerpApiShoppingResult) {
+  const searchableText = normalizeText(
+    [result.title, result.snippet, result.source].filter(Boolean).join(" ")
+  );
+
+  if (
+    searchableText.includes("agotado") ||
+    searchableText.includes("sin stock") ||
+    searchableText.includes("no disponible") ||
+    searchableText.includes("out of stock")
+  ) {
+    return "Agotado";
+  }
+
+  if (
+    searchableText.includes("en stock") ||
+    searchableText.includes("disponible") ||
+    searchableText.includes("envio inmediato") ||
+    searchableText.includes("recibelo") ||
+    searchableText.includes("entrega")
+  ) {
+    return "Disponible";
+  }
+
+  return "Consultar";
+}
+
 async function fetchSerpApiResults(query: ProductQuery) {
   const apiKey = process.env.SERPAPI_KEY;
 
@@ -212,7 +239,8 @@ export const serpApiProductsProvider: ProductProvider = {
             supplier: result.source?.trim() || "Google Shopping",
             name: query.trim(),
             price,
-            url
+            url,
+            availability: getAvailability(result)
           });
           addedOffers += 1;
         }

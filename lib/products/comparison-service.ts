@@ -16,6 +16,8 @@ type ComparableOffer = ProviderProductOffer & {
   normalizedSupplier: string;
 };
 
+const maxStoresPerProduct = 10;
+
 function normalizeProductName(name: string) {
   return name.trim().toLowerCase();
 }
@@ -42,63 +44,49 @@ function chooseBestOption(products: ComparableOffer[]) {
   })[0];
 }
 
-function getUniqueRequestedProducts(queries: ProductQuery[]) {
-  return Array.from(new Set(queries.map((query) => normalizeProductName(query))));
-}
-
-function buildComparisons(
-  offers: ComparableOffer[],
-  requestedProducts: string[]
-): ProductComparisonResult[] {
+function buildComparisons(offers: ComparableOffer[]): ProductComparisonResult[] {
   const groupedProducts = new Map<string, ComparableOffer[]>();
 
   for (const offer of offers) {
-    const group = groupedProducts.get(offer.normalizedSupplier) ?? [];
+    const group = groupedProducts.get(offer.normalizedName) ?? [];
     group.push(offer);
-    groupedProducts.set(offer.normalizedSupplier, group);
+    groupedProducts.set(offer.normalizedName, group);
   }
 
   return Array.from(groupedProducts.values())
     .map((group) => {
-      const offersByProduct = new Map<string, ComparableOffer[]>();
+      const offersBySupplier = new Map<string, ComparableOffer[]>();
 
       for (const offer of group) {
-        const productOffers = offersByProduct.get(offer.normalizedName) ?? [];
-        productOffers.push(offer);
-        offersByProduct.set(offer.normalizedName, productOffers);
+        const supplierOffers = offersBySupplier.get(offer.normalizedSupplier) ?? [];
+        supplierOffers.push(offer);
+        offersBySupplier.set(offer.normalizedSupplier, supplierOffers);
       }
 
-      if (requestedProducts.some((product) => !offersByProduct.has(product))) {
-        return null;
-      }
+      const stores = Array.from(offersBySupplier.values())
+        .map((supplierOffers) => chooseBestOption(supplierOffers))
+        .sort((left, right) => {
+          if (left.price !== right.price) {
+            return left.price - right.price;
+          }
 
-      const selectedOffers = requestedProducts.map((product) =>
-        chooseBestOption(offersByProduct.get(product) ?? [])
-      );
-      const bestOption = chooseBestOption(selectedOffers);
-      const totalPrice = selectedOffers.reduce((sum, offer) => sum + offer.price, 0);
+          return left.supplier.localeCompare(right.supplier);
+        })
+        .slice(0, maxStoresPerProduct);
 
       return {
-        supplier: bestOption.supplier,
-        providerId: bestOption.providerId,
-        totalProducts: selectedOffers.length,
-        totalPrice: Number(totalPrice.toFixed(2)),
-        averagePrice: Number((totalPrice / selectedOffers.length).toFixed(2)),
-        bestOffer: {
-          productName: bestOption.name,
-          price: bestOption.price,
-          url: bestOption.url
-        }
+        productName: group[0].name,
+        stores: stores.map((offer) => ({
+          providerId: offer.providerId,
+          supplier: offer.supplier,
+          price: offer.price,
+          url: offer.url,
+          availability: offer.availability
+        }))
       };
     })
-    .filter((comparison): comparison is ProductComparisonResult => comparison !== null)
-    .sort((left, right) => {
-      if (left.totalPrice !== right.totalPrice) {
-        return left.totalPrice - right.totalPrice;
-      }
-
-      return left.supplier.localeCompare(right.supplier);
-    });
+    .filter((comparison) => comparison.stores.length > 0)
+    .sort((left, right) => left.productName.localeCompare(right.productName));
 }
 
 export async function compareProductsFromProviders({
@@ -118,12 +106,11 @@ export async function compareProductsFromProviders({
   const comparableOffers = resultsByProvider
     .flatMap((result) => result.offers)
     .map(toComparableOffer);
-  const requestedProducts = getUniqueRequestedProducts(queries);
   const providerErrors: ProviderError[] = resultsByProvider.flatMap((result) => result.errors);
 
   return {
     providerCount: providers.length,
     providerErrors,
-    comparisons: buildComparisons(comparableOffers, requestedProducts)
+    comparisons: buildComparisons(comparableOffers)
   };
 }

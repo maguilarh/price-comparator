@@ -6,6 +6,7 @@ export type ProviderProductOffer = {
   name: string;
   price: number;
   url: string;
+  availability: string;
 };
 
 export type ProviderError = {
@@ -16,16 +17,14 @@ export type ProviderError = {
 };
 
 export type ProductComparisonResult = {
-  supplier: string;
-  providerId: string;
-  totalProducts: number;
-  totalPrice: number;
-  averagePrice: number;
-  bestOffer: {
-    productName: string;
+  productName: string;
+  stores: Array<{
+    providerId: string;
+    supplier: string;
     price: number;
     url: string;
-  };
+    availability: string;
+  }>;
 };
 
 export type ProductProvider = {

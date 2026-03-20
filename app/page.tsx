@@ -1,22 +1,20 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, Fragment, useState } from "react";
 
 type ProductFormData = {
   name: string;
 };
 
 type ComparisonResult = {
-  supplier: string;
-  providerId: string;
-  totalProducts: number;
-  totalPrice: number;
-  averagePrice: number;
-  bestOffer: {
-    productName: string;
+  productName: string;
+  stores: Array<{
+    providerId: string;
+    supplier: string;
     price: number;
     url: string;
-  };
+    availability: string;
+  }>;
 };
 
 type ComparisonResponse = {
@@ -37,7 +35,6 @@ export default function HomePage() {
     "Añade varios nombres de producto y compara el mejor precio."
   );
   const [isLoading, setIsLoading] = useState(false);
-  const cheapestTotal = comparisons.length > 0 ? comparisons[0].totalPrice : null;
 
   const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     const { name, value } = event.target;
@@ -93,9 +90,7 @@ export default function HomePage() {
       }
 
       setComparisons(data.comparisons);
-      setStatusMessage(
-        "Comparacion completada. Solo se muestran tiendas con el catalogo completo."
-      );
+      setStatusMessage("Comparacion completada. Ya tienes hasta 10 tiendas por producto.");
     } catch {
       setComparisons([]);
       setStatusMessage("Ha ocurrido un error al llamar al endpoint.");
@@ -108,11 +103,10 @@ export default function HomePage() {
     <main className="page">
       <section className="hero">
         <p className="eyebrow">Comparador de precios</p>
-        <h1>Compara resultados agrupados por tienda</h1>
+        <h1>Compara hasta 10 tiendas por producto</h1>
         <p className="lead">
-          Introduce los nombres de los productos que quieres consultar y compara los
-          resultados agrupados por tienda. La tabla solo mostrara tiendas con catalogo
-          completo, su suma total y la mejor oferta individual.
+          Introduce los nombres de los productos que quieres consultar y revisa, para cada
+          producto, hasta 10 tiendas encontradas ordenadas por precio ascendente.
         </p>
       </section>
 
@@ -175,62 +169,71 @@ export default function HomePage() {
 
       <section className="card results-card">
         <div className="card-header">
-          <h2>Resumen por tienda</h2>
-          <p>Resultado de la comparacion de tiendas que cubren todo el catalogo solicitado.</p>
+          <h2>Resumen</h2>
+          <p>Tabla agrupada visualmente por producto con hasta 10 tiendas ordenadas por precio.</p>
         </div>
 
         {comparisons.length > 0 ? (
-          <div className="store-results">
-            {comparisons.map((comparison) => {
-              const isCheapest = comparison.totalPrice === cheapestTotal;
-
-              return (
-                <article
-                  key={`${comparison.providerId}-${comparison.supplier}`}
-                  className={`store-card${isCheapest ? " store-card-featured" : ""}`}
-                >
-                  <div className="store-card-header">
-                    <div>
-                      <p className="store-label">Tienda</p>
-                      <h3>{comparison.supplier}</h3>
-                    </div>
-                    {isCheapest ? <span className="best-badge">Mas barata</span> : null}
-                  </div>
-
-                  <div className="store-total">
-                    <span>Total del carrito</span>
-                    <strong>{comparison.totalPrice.toFixed(2)} EUR</strong>
-                  </div>
-
-                  <div className="store-metrics">
-                    <div>
-                      <span>Productos</span>
-                      <strong>{comparison.totalProducts}</strong>
-                    </div>
-                    <div>
-                      <span>Media</span>
-                      <strong>{comparison.averagePrice.toFixed(2)} EUR</strong>
-                    </div>
-                  </div>
-
-                  <div className="store-offer">
-                    <span>Mejor oferta individual</span>
-                    <a
-                      href={comparison.bestOffer.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="result-link"
-                    >
-                      {comparison.bestOffer.productName} ({comparison.bestOffer.price.toFixed(2)} EUR)
-                    </a>
-                  </div>
-                </article>
-              );
-            })}
+          <div className="table-wrap">
+            <table className="results-table grouped-results-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Tienda</th>
+                  <th>Precio</th>
+                  <th>Disponibilidad</th>
+                  <th>Enlace</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisons.map((comparison) => (
+                  <Fragment key={comparison.productName}>
+                    <tr className="product-group-row">
+                      <td colSpan={5}>
+                        <div className="product-group-header">
+                          <div>
+                            <p className="store-label">Producto</p>
+                            <strong>{comparison.productName}</strong>
+                          </div>
+                          <span className="result-count">
+                            {comparison.stores.length} tienda{comparison.stores.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                    {comparison.stores.map((store, index) => (
+                      <tr
+                        key={`${comparison.productName}-${store.providerId}-${store.supplier}`}
+                        className="product-store-row"
+                      >
+                        <td>{index + 1}</td>
+                        <td>
+                          <strong>{store.supplier}</strong>
+                        </td>
+                        <td>{store.price.toFixed(2)} EUR</td>
+                        <td>
+                          <span className="availability-pill">{store.availability}</span>
+                        </td>
+                        <td>
+                          <a
+                            href={store.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="result-link"
+                          >
+                            Ver oferta
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : (
           <p className="empty-state">
-            El resumen por tienda aparecera cuando compares los productos cargados.
+            Los resultados por producto apareceran cuando compares los productos cargados.
           </p>
         )}
       </section>

@@ -26,7 +26,7 @@ export async function POST(request: Request) {
       ok: true,
       processedAt: new Date().toISOString(),
       totalProductsReceived: body.products.length,
-      uniqueStoresCompared: comparison.comparisons.length,
+      uniqueProductsCompared: comparison.comparisons.length,
       providerCount: comparison.providerCount,
       providerErrors: comparison.providerErrors,
       comparisons: comparison.comparisons

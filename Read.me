@@ -56,11 +56,12 @@ Comportamiento:
 - El rate limiting actual es basico y en memoria del proceso.
 - Las busquedas del proveedor real se orientan a Espana y se filtran usando senales como dominio `.es`, moneda EUR y textos de direccion o envio a Espana.
 
-Agrupa resultados por tienda y resume sus ofertas segun estas reglas:
+Agrupa resultados por producto y devuelve hasta 10 tiendas por cada uno:
 
-- Suma el precio de las ofertas encontradas por tienda
-- Calcula el precio medio por tienda
-- Destaca la mejor oferta individual de cada tienda por menor precio
+- Agrupa coincidencias por nombre de producto
+- Deduplica tiendas repetidas, conservando la mejor oferta de cada tienda
+- Ordena las tiendas por precio ascendente
+- Limita la respuesta a 10 tiendas por producto
 
 Ejemplo de request:
 
@@ -77,20 +78,36 @@ Ejemplo de respuesta:
   "ok": true,
   "processedAt": "2026-03-20T10:00:00.000Z",
   "totalProductsReceived": 2,
-  "uniqueStoresCompared": 1,
+  "uniqueProductsCompared": 2,
   "providerCount": 1,
   "comparisons": [
     {
-      "supplier": "Google Shopping",
-      "providerId": "serpapi",
-      "totalProducts": 2,
-      "totalPrice": 32.49,
-      "averagePrice": 16.25,
-      "bestOffer": {
-        "productName": "Camiseta basica",
-        "price": 14.99,
-        "url": "https://tienda.com/camiseta"
-      }
+      "productName": "Auriculares bluetooth",
+      "stores": [
+        {
+          "providerId": "serpapi",
+          "supplier": "Tienda Uno",
+          "price": 39.99,
+          "url": "https://tienda1.es/auriculares"
+        },
+        {
+          "providerId": "serpapi",
+          "supplier": "Tienda Dos",
+          "price": 42.5,
+          "url": "https://tienda2.es/auriculares"
+        }
+      ]
+    },
+    {
+      "productName": "Camiseta basica",
+      "stores": [
+        {
+          "providerId": "serpapi",
+          "supplier": "Tienda Tres",
+          "price": 14.99,
+          "url": "https://tienda3.es/camiseta"
+        }
+      ]
     }
   ]
 }
