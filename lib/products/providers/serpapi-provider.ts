@@ -289,7 +289,7 @@ export const serpApiProductsProvider: ProductProvider = {
             discarded: [],
             errors: queryErrors,
             usedMockData: false,
-            failureStage: "no_results"
+            failureStage: "no_valid_store_results"
           });
           console.warn("[products][serpapi] search:empty", {
             product: query.trim(),
@@ -390,8 +390,8 @@ export const serpApiProductsProvider: ProductProvider = {
           failureStage:
             addedOffers === 0
               ? discarded.length > 0
-                ? "filters"
-                : "no_results"
+                ? "links_found_but_filtered"
+                : "no_valid_store_results"
               : "none"
         });
         console.info("[products][serpapi] search:summary", {
@@ -406,14 +406,14 @@ export const serpApiProductsProvider: ProductProvider = {
         const message = error instanceof Error ? error.message : "Error desconocido.";
         queryErrors.push(message);
         const failureStage = message.includes("Timeout")
-          ? "network"
+          ? "http_error"
           : message.includes("HTTP")
-            ? "http"
+            ? "http_error"
             : message.includes("parsear")
               ? "parsing"
               : message.includes("red") || message.includes("bloqueo")
-                ? "network"
-                : "http";
+                ? "http_error"
+                : "http_error";
 
         errors.push({
           providerId: serpApiProviderId,

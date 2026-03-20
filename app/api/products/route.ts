@@ -33,6 +33,8 @@ export async function POST(request: Request) {
       providerCount: comparison.providerCount,
       providerErrors: comparison.providerErrors,
       comparisons: comparison.comparisons,
+      cartSummaries: comparison.cartSummaries,
+      bestCart: comparison.bestCart,
       debug: debugEnabled ? comparison.debug : undefined
     });
   } catch (error) {

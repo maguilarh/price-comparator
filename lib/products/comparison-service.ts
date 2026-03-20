@@ -1,5 +1,6 @@
 import { getProvidersByIds } from "@/lib/products/providers";
 import {
+  PharmacyCartSummary,
   ProductComparisonResult,
   ProductQuery,
   ProviderError,
@@ -91,6 +92,65 @@ function buildComparisons(offers: ComparableOffer[]): ProductComparisonResult[] 
     .sort((left, right) => left.productName.localeCompare(right.productName));
 }
 
+function buildCartSummaries(
+  offers: ComparableOffer[],
+  queries: ProductQuery[]
+): PharmacyCartSummary[] {
+  const queriesByName = new Map(queries.map((query) => [normalizeProductName(query), query.trim()]));
+  const groupedBySupplier = new Map<string, ComparableOffer[]>();
+
+  for (const offer of offers) {
+    const currentGroup = groupedBySupplier.get(offer.normalizedSupplier) ?? [];
+    currentGroup.push(offer);
+    groupedBySupplier.set(offer.normalizedSupplier, currentGroup);
+  }
+
+  return Array.from(groupedBySupplier.values())
+    .map((supplierOffers) => {
+      const bestByProduct = new Map<string, ComparableOffer>();
+
+      for (const offer of supplierOffers) {
+        const current = bestByProduct.get(offer.normalizedName);
+        if (!current || offer.price < current.price) {
+          bestByProduct.set(offer.normalizedName, offer);
+        }
+      }
+
+      const items = Array.from(bestByProduct.values())
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .map((offer) => ({
+          productName: offer.name,
+          price: offer.price,
+          url: offer.url,
+          availability: offer.availability
+        }));
+      const missingProducts = Array.from(queriesByName.entries())
+        .filter(([normalizedName]) => !bestByProduct.has(normalizedName))
+        .map(([, originalName]) => originalName);
+
+      return {
+        supplier: supplierOffers[0].supplier,
+        providerId: supplierOffers[0].providerId,
+        totalPrice: items.reduce((sum, item) => sum + item.price, 0),
+        matchedProducts: items.length,
+        missingProducts,
+        isComplete: missingProducts.length === 0,
+        items
+      };
+    })
+    .sort((left, right) => {
+      if (left.isComplete !== right.isComplete) {
+        return left.isComplete ? -1 : 1;
+      }
+
+      if (left.totalPrice !== right.totalPrice) {
+        return left.totalPrice - right.totalPrice;
+      }
+
+      return left.supplier.localeCompare(right.supplier);
+    });
+}
+
 export async function compareProductsFromProviders({
   queries,
   providerIds,
@@ -113,11 +173,15 @@ export async function compareProductsFromProviders({
   const debugEntries: ProviderQueryDebug[] = resultsByProvider.flatMap(
     (result) => result.debugEntries
   );
+  const cartSummaries = buildCartSummaries(comparableOffers, queries);
+  const bestCart = cartSummaries.find((summary) => summary.isComplete) ?? null;
 
   return {
     providerCount: providers.length,
     providerErrors,
     comparisons: buildComparisons(comparableOffers),
+    cartSummaries,
+    bestCart,
     debug: {
       requestedProducts: queries,
       providerIds,

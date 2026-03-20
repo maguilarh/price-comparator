@@ -21,6 +21,7 @@ export type ProviderQueryDebug = {
   providerId: string;
   providerLabel: string;
   searched: boolean;
+  responseTimeMs?: number;
   searchEngine?: string;
   debugPreviewQuery?: string;
   debugPreviewLinks?: Array<{
@@ -65,6 +66,21 @@ export type ProductComparisonResult = {
   stores: Array<{
     providerId: string;
     supplier: string;
+    price: number;
+    url: string;
+    availability: string;
+  }>;
+};
+
+export type PharmacyCartSummary = {
+  supplier: string;
+  providerId: string;
+  totalPrice: number;
+  matchedProducts: number;
+  missingProducts: string[];
+  isComplete: boolean;
+  items: Array<{
+    productName: string;
     price: number;
     url: string;
     availability: string;

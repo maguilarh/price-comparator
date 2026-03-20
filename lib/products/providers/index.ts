@@ -1,13 +1,8 @@
 import { ProductProvider } from "@/lib/products/types";
 import { manualProductsProvider } from "@/lib/products/providers/manual-provider";
-import { serpApiProductsProvider } from "@/lib/products/providers/serpapi-provider";
-import { webSearchProductsProvider } from "@/lib/products/providers/web-search-provider";
+import { spanishPharmacyProviders } from "@/lib/products/providers/spanish-pharmacies";
 
-const providers: ProductProvider[] = [
-  webSearchProductsProvider,
-  serpApiProductsProvider,
-  manualProductsProvider
-];
+const providers: ProductProvider[] = [...spanishPharmacyProviders, manualProductsProvider];
 
 export function getProvidersByIds(providerIds: string[]): ProductProvider[] {
   return providerIds
@@ -29,11 +24,7 @@ export function getDefaultProviderIds() {
     return configuredIds;
   }
 
-  const defaults = [webSearchProductsProvider.id];
-
-  if (process.env.SERPAPI_KEY) {
-    defaults.push(serpApiProductsProvider.id);
-  }
+  const defaults = spanishPharmacyProviders.map((provider) => provider.id);
 
   if (process.env.USE_MOCK === "true") {
     defaults.push(manualProductsProvider.id);

@@ -44,6 +44,7 @@ type ComparisonResponse = {
       providerId: string;
       providerLabel: string;
       searched: boolean;
+      responseTimeMs?: number;
       searchEngine?: string;
       debugPreviewQuery?: string;
       debugPreviewLinks?: Array<{
@@ -498,6 +499,10 @@ export default function HomePage() {
                   <h3>{entry.product}</h3>
                   <p>
                     Proveedor: {entry.providerLabel} | Busqueda web: {entry.searched ? "Si" : "No"}
+                  </p>
+                  <p>
+                    Tiempo de respuesta:{" "}
+                    {typeof entry.responseTimeMs === "number" ? `${entry.responseTimeMs} ms` : "n/d"}
                   </p>
                   <p>Motor de busqueda: {entry.searchEngine || "n/d"}</p>
                   {entry.debugPreviewQuery ? (
