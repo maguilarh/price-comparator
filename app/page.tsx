@@ -21,6 +21,57 @@ type ComparisonResponse = {
   ok: boolean;
   comparisons?: ComparisonResult[];
   error?: string;
+  providerErrors?: Array<{
+    providerId: string;
+    providerLabel: string;
+    message: string;
+    query?: string;
+  }>;
+  debug?: {
+    requestedProducts?: string[];
+    providerIds?: string[];
+    searchExecution?: string;
+    frontendExternalRequests?: boolean;
+    corsLikelyIssue?: boolean;
+    webSearchAttempted?: boolean;
+    mockDataActive?: boolean;
+    entries?: Array<{
+      product: string;
+      providerId: string;
+      providerLabel: string;
+      searched: boolean;
+      requestUrl?: string;
+      consultedSources: string[];
+      resultCount: number;
+      acceptedCount: number;
+      discardedCount: number;
+      discarded: Array<{
+        source?: string;
+        url?: string;
+        reason: string;
+      }>;
+      errors: string[];
+      usedMockData: boolean;
+      failureStage?: "network" | "http" | "parsing" | "filters" | "no_results" | "mock" | "none";
+    }>;
+    totals?: {
+      productsRequested: number;
+      debugEntries: number;
+      resultsAccepted: number;
+      resultsDiscarded: number;
+      providerErrors: number;
+    };
+    error?: string;
+  };
+};
+
+type NetworkTestResponse = {
+  ok: boolean;
+  url: string;
+  status?: number;
+  durationMs: number;
+  bodyPreview?: string;
+  error?: string;
 };
 
 const initialForm: ProductFormData = {
@@ -31,10 +82,15 @@ export default function HomePage() {
   const [formData, setFormData] = useState<ProductFormData>(initialForm);
   const [products, setProducts] = useState<string[]>([]);
   const [comparisons, setComparisons] = useState<ComparisonResult[]>([]);
+  const [providerErrors, setProviderErrors] = useState<NonNullable<ComparisonResponse["providerErrors"]>>([]);
+  const [debugData, setDebugData] = useState<ComparisonResponse["debug"]>();
   const [statusMessage, setStatusMessage] = useState(
     "Añade varios nombres de producto y compara el mejor precio."
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const [networkTest, setNetworkTest] = useState<NetworkTestResponse>();
+  const [isTestingNetwork, setIsTestingNetwork] = useState(false);
 
   const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     const { name, value } = event.target;
@@ -78,10 +134,12 @@ export default function HomePage() {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ products })
+        body: JSON.stringify({ products, debug: true })
       });
 
       const data = (await response.json()) as ComparisonResponse;
+      setDebugData(data.debug);
+      setProviderErrors(data.providerErrors || []);
 
       if (!response.ok || !data.ok || !data.comparisons) {
         setComparisons([]);
@@ -90,14 +148,61 @@ export default function HomePage() {
       }
 
       setComparisons(data.comparisons);
+      if (data.comparisons.length === 0) {
+        setStatusMessage(
+          "No se encontraron resultados. Revisa el panel de depuracion para ver en que paso se descartan."
+        );
+        return;
+      }
+
       setStatusMessage("Comparacion completada. Ya tienes hasta 10 tiendas por producto.");
     } catch {
       setComparisons([]);
+      setProviderErrors([]);
+      setDebugData(undefined);
       setStatusMessage("Ha ocurrido un error al llamar al endpoint.");
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleNetworkTest = async () => {
+    setIsTestingNetwork(true);
+
+    try {
+      const response = await fetch("/api/debug/network-test");
+      const data = (await response.json()) as NetworkTestResponse;
+      setNetworkTest(data);
+    } catch {
+      setNetworkTest({
+        ok: false,
+        url: "https://example.com",
+        durationMs: 0,
+        error: "No se pudo llamar al endpoint de test de red."
+      });
+    } finally {
+      setIsTestingNetwork(false);
+    }
+  };
+
+  const detectedFailureStage = debugData?.entries?.find(
+    (entry) => entry.failureStage && entry.failureStage !== "none"
+  )?.failureStage;
+
+  const failureStageLabel =
+    detectedFailureStage === "network"
+      ? "Error de red o timeout del servidor"
+      : detectedFailureStage === "http"
+        ? "Respuesta HTTP incorrecta del proveedor"
+        : detectedFailureStage === "parsing"
+          ? "Fallo al parsear la respuesta"
+          : detectedFailureStage === "filters"
+            ? "Todos los resultados se descartaron por filtros"
+            : detectedFailureStage === "no_results"
+              ? "La busqueda no devolvio resultados"
+              : detectedFailureStage === "mock"
+                ? "Proveedor sin busqueda web real"
+                : null;
 
   return (
     <main className="page">
@@ -149,6 +254,76 @@ export default function HomePage() {
             <h2>Productos cargados</h2>
             <p>{statusMessage}</p>
           </div>
+
+          <label className="debug-toggle">
+            <input
+              type="checkbox"
+              checked={showDebug}
+              onChange={() => setShowDebug((current) => !current)}
+            />
+            Mostrar modo debug
+          </label>
+
+          <div className="debug-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={handleNetworkTest}
+              disabled={isTestingNetwork}
+            >
+              {isTestingNetwork ? "Probando red..." : "Test de red servidor"}
+            </button>
+          </div>
+
+          <div className="debug-hint">
+            <strong>Ubicacion de la busqueda:</strong>{" "}
+            {debugData?.searchExecution === "backend"
+              ? "backend"
+              : "sin ejecutar aun"}
+            {" | "}
+            <strong>Busquedas externas desde frontend:</strong>{" "}
+            {debugData?.frontendExternalRequests ? "Si" : "No"}
+            {" | "}
+            <strong>CORS probable:</strong> {debugData?.corsLikelyIssue ? "Si" : "No"}
+          </div>
+
+          {debugData?.mockDataActive ? (
+            <p className="warning-banner">
+              Aviso: hay proveedores sin busqueda web real activa. Si solo ves "Carga manual",
+              la app no esta consultando resultados reales en internet.
+            </p>
+          ) : null}
+
+          {providerErrors.length > 0 ? (
+            <div className="error-panel">
+              <strong>Errores detectados</strong>
+              <ul>
+                {providerErrors.map((providerError, index) => (
+                  <li key={`${providerError.providerId}-${providerError.query || index}`}>
+                    {providerError.providerLabel}: {providerError.message}
+                    {providerError.query ? ` (${providerError.query})` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {failureStageLabel ? (
+            <p className="warning-banner">
+              Diagnostico principal: <strong>{failureStageLabel}</strong>
+            </p>
+          ) : null}
+
+          {networkTest ? (
+            <div className="network-test-panel">
+              <strong>Test de red del servidor</strong>
+              <p>URL: {networkTest.url}</p>
+              <p>Estado: {typeof networkTest.status === "number" ? networkTest.status : "Sin status"}</p>
+              <p>Duracion: {networkTest.durationMs} ms</p>
+              <p>Resultado: {networkTest.ok ? "Conexion correcta desde backend" : "Fallo de red"}</p>
+              {networkTest.error ? <p>Error: {networkTest.error}</p> : null}
+            </div>
+          ) : null}
 
           {products.length > 0 ? (
             <ul className="offer-list">
@@ -232,11 +407,92 @@ export default function HomePage() {
             </table>
           </div>
         ) : (
-          <p className="empty-state">
-            Los resultados por producto apareceran cuando compares los productos cargados.
-          </p>
+          <div className="empty-state">
+            <p>
+              {products.length > 0
+                ? "No hay resultados para mostrar. Revisa los errores y el modo debug para ver si la busqueda falla, si la respuesta llega vacia o si todos los resultados se estan descartando."
+                : "Los resultados por producto apareceran cuando compares los productos cargados."}
+            </p>
+          </div>
         )}
       </section>
+
+      {showDebug ? (
+        <section className="card results-card">
+          <div className="card-header">
+            <h2>Debug</h2>
+            <p>Resumen del flujo de busqueda, parseo, filtrado y entrega al frontend.</p>
+          </div>
+
+          {debugData ? (
+            <div className="debug-panel">
+              <div className="debug-summary">
+                <span>Busqueda web: {debugData.webSearchAttempted ? "Si" : "No"}</span>
+                <span>Ejecucion: {debugData.searchExecution || "n/d"}</span>
+                <span>Frontend externo: {debugData.frontendExternalRequests ? "Si" : "No"}</span>
+                <span>CORS probable: {debugData.corsLikelyIssue ? "Si" : "No"}</span>
+                <span>Mock activo: {debugData.mockDataActive ? "Si" : "No"}</span>
+                <span>Resultados aceptados: {debugData.totals?.resultsAccepted ?? 0}</span>
+                <span>Resultados descartados: {debugData.totals?.resultsDiscarded ?? 0}</span>
+              </div>
+
+              {debugData.entries?.map((entry, index) => (
+                <article
+                  key={`${entry.providerId}-${entry.product}-${index}`}
+                  className="debug-entry"
+                >
+                  <h3>{entry.product}</h3>
+                  <p>
+                    Proveedor: {entry.providerLabel} | Busqueda web: {entry.searched ? "Si" : "No"}
+                  </p>
+                  <p>
+                    Fase del fallo:{" "}
+                    {entry.failureStage && entry.failureStage !== "none"
+                      ? entry.failureStage
+                      : "sin fallo detectado"}
+                  </p>
+                  <p>URL/Fuente consultada: {entry.requestUrl || "No aplica"}</p>
+                  <p>
+                    Tiendas consultadas:{" "}
+                    {entry.consultedSources.length > 0
+                      ? entry.consultedSources.join(", ")
+                      : "Sin fuentes registradas"}
+                  </p>
+                  <p>
+                    Resultados encontrados: {entry.resultCount} | Aceptados: {entry.acceptedCount} |
+                    Descartados: {entry.discardedCount}
+                  </p>
+                  {entry.errors.length > 0 ? (
+                    <div className="debug-subpanel">
+                      <strong>Errores</strong>
+                      <ul>
+                        {entry.errors.map((item, itemIndex) => (
+                          <li key={`${entry.product}-error-${itemIndex}`}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {entry.discarded.length > 0 ? (
+                    <div className="debug-subpanel">
+                      <strong>Resultados descartados</strong>
+                      <ul>
+                        {entry.discarded.map((item, itemIndex) => (
+                          <li key={`${entry.product}-discarded-${itemIndex}`}>
+                            {item.source || "Sin fuente"}: {item.reason}
+                            {item.url ? ` (${item.url})` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-state">Aun no hay informacion de debug. Ejecuta una comparacion.</p>
+          )}
+        </section>
+      ) : null}
     </main>
   );
 }

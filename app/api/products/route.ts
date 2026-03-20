@@ -6,6 +6,8 @@ import { isProductsComparisonRequest } from "@/lib/products/types";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    const debugEnabled =
+      typeof body?.debug === "boolean" ? body.debug : process.env.PRODUCT_DEBUG === "true";
 
     if (!isProductsComparisonRequest(body)) {
       return NextResponse.json(
@@ -29,13 +31,19 @@ export async function POST(request: Request) {
       uniqueProductsCompared: comparison.comparisons.length,
       providerCount: comparison.providerCount,
       providerErrors: comparison.providerErrors,
-      comparisons: comparison.comparisons
+      comparisons: comparison.comparisons,
+      debug: debugEnabled ? comparison.debug : undefined
     });
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "No se pudo procesar el JSON enviado.";
+    console.error("[products][api] request:error", { error: message });
     return NextResponse.json(
       {
         ok: false,
-        error: "No se pudo procesar el JSON enviado."
+        error: "No se pudo procesar el JSON enviado.",
+        debug: {
+          error: message
+        }
       },
       { status: 400 }
     );

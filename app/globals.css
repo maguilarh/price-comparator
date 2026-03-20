@@ -187,6 +187,52 @@ select {
   color: var(--muted);
 }
 
+.debug-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  font-weight: 600;
+}
+
+.debug-actions {
+  margin-top: 0.9rem;
+}
+
+.debug-hint,
+.network-test-panel {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 16px;
+  background: rgba(94, 73, 53, 0.06);
+}
+
+.network-test-panel p {
+  margin: 0.35rem 0 0;
+}
+
+.warning-banner,
+.error-panel {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 16px;
+}
+
+.warning-banner {
+  color: #6f3e1f;
+  background: rgba(201, 100, 66, 0.12);
+}
+
+.error-panel {
+  background: rgba(181, 55, 55, 0.08);
+}
+
+.error-panel ul,
+.debug-subpanel ul {
+  margin: 0.6rem 0 0;
+  padding-left: 1.1rem;
+}
+
 .results-card {
   margin-top: 1.5rem;
 }
@@ -290,6 +336,45 @@ select {
   margin-top: 1.5rem;
   color: var(--muted);
   line-height: 1.7;
+}
+
+.debug-panel {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.debug-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.debug-summary span {
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(94, 73, 53, 0.08);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.debug-entry {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.debug-entry h3 {
+  margin: 0 0 0.5rem;
+}
+
+.debug-entry p {
+  margin: 0.35rem 0;
+}
+
+.debug-subpanel {
+  margin-top: 0.85rem;
 }
 
 @media (max-width: 860px) {

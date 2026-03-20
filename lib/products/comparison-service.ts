@@ -3,7 +3,8 @@ import {
   ProductComparisonResult,
   ProductQuery,
   ProviderError,
-  ProviderProductOffer
+  ProviderProductOffer,
+  ProviderQueryDebug
 } from "@/lib/products/types";
 
 type CompareProductsParams = {
@@ -107,10 +108,30 @@ export async function compareProductsFromProviders({
     .flatMap((result) => result.offers)
     .map(toComparableOffer);
   const providerErrors: ProviderError[] = resultsByProvider.flatMap((result) => result.errors);
+  const debugEntries: ProviderQueryDebug[] = resultsByProvider.flatMap(
+    (result) => result.debugEntries
+  );
 
   return {
     providerCount: providers.length,
     providerErrors,
-    comparisons: buildComparisons(comparableOffers)
+    comparisons: buildComparisons(comparableOffers),
+    debug: {
+      requestedProducts: queries,
+      providerIds,
+      searchExecution: "backend",
+      frontendExternalRequests: false,
+      corsLikelyIssue: false,
+      webSearchAttempted: debugEntries.some((entry) => entry.searched),
+      mockDataActive: debugEntries.some((entry) => entry.usedMockData),
+      entries: debugEntries,
+      totals: {
+        productsRequested: queries.length,
+        debugEntries: debugEntries.length,
+        resultsAccepted: debugEntries.reduce((sum, entry) => sum + entry.acceptedCount, 0),
+        resultsDiscarded: debugEntries.reduce((sum, entry) => sum + entry.discardedCount, 0),
+        providerErrors: providerErrors.length
+      }
+    }
   };
 }

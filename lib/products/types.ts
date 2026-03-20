@@ -16,6 +16,26 @@ export type ProviderError = {
   query?: string;
 };
 
+export type ProviderQueryDebug = {
+  product: string;
+  providerId: string;
+  providerLabel: string;
+  searched: boolean;
+  requestUrl?: string;
+  consultedSources: string[];
+  resultCount: number;
+  acceptedCount: number;
+  discardedCount: number;
+  discarded: Array<{
+    source?: string;
+    url?: string;
+    reason: string;
+  }>;
+  errors: string[];
+  usedMockData: boolean;
+  failureStage?: "network" | "http" | "parsing" | "filters" | "no_results" | "mock" | "none";
+};
+
 export type ProductComparisonResult = {
   productName: string;
   stores: Array<{
@@ -33,6 +53,7 @@ export type ProductProvider = {
   fetchOffers: (queries: ProductQuery[]) => Promise<{
     offers: ProviderProductOffer[];
     errors: ProviderError[];
+    debugEntries: ProviderQueryDebug[];
   }>;
 };
 

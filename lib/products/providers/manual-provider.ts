@@ -1,7 +1,8 @@
 import {
   ProductProvider,
   ProductQuery,
-  ProviderError
+  ProviderError,
+  ProviderQueryDebug
 } from "@/lib/products/types";
 
 export const manualProviderId = "manual";
@@ -10,6 +11,22 @@ export const manualProductsProvider: ProductProvider = {
   id: manualProviderId,
   label: "Carga manual",
   async fetchOffers(queries: ProductQuery[]) {
+    const debugEntries: ProviderQueryDebug[] = queries.map((query) => ({
+      product: query.trim(),
+      providerId: manualProviderId,
+      providerLabel: "Carga manual",
+      searched: false,
+      consultedSources: [],
+      resultCount: 0,
+      acceptedCount: 0,
+      discardedCount: 0,
+      discarded: [],
+      errors: [
+        "Proveedor sin busqueda web activa. No genera resultados reales sin un proveedor externo."
+      ],
+      usedMockData: true,
+      failureStage: "mock"
+    }));
     const errors: ProviderError[] = queries.map((query) => ({
       providerId: manualProviderId,
       providerLabel: "Carga manual",
@@ -20,7 +37,8 @@ export const manualProductsProvider: ProductProvider = {
 
     return {
       offers: [],
-      errors
+      errors,
+      debugEntries
     };
   }
 };

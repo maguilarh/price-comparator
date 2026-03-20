@@ -2,7 +2,8 @@ import {
   ProductProvider,
   ProductQuery,
   ProviderError,
-  ProviderProductOffer
+  ProviderProductOffer,
+  ProviderQueryDebug
 } from "@/lib/products/types";
 import { createRateLimiter } from "@/lib/products/rate-limiter";
 
@@ -65,6 +66,10 @@ function getEnvNumber(name: string, fallback: number) {
 
 function normalizeUrl(url: string) {
   return url.trim();
+}
+
+function buildRequestUrl(params: URLSearchParams) {
+  return `${apiBaseUrl}?${params.toString()}`;
 }
 
 function normalizeText(value: string) {
@@ -170,9 +175,10 @@ async function fetchSerpApiResults(query: ProductQuery) {
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), getEnvNumber("SERPAPI_TIMEOUT_MS", 8000));
+  const requestUrl = buildRequestUrl(params);
 
   try {
-    const response = await fetch(`${apiBaseUrl}?${params.toString()}`, {
+    const response = await fetch(requestUrl, {
       method: "GET",
       signal: controller.signal,
       headers: {
@@ -182,18 +188,43 @@ async function fetchSerpApiResults(query: ProductQuery) {
         revalidate: 300
       }
     });
+    console.info("[products][serpapi] http:response", {
+      product: query.trim(),
+      status: response.status,
+      ok: response.ok,
+      requestUrl
+    });
 
     if (!response.ok) {
       throw new Error(`Respuesta HTTP ${response.status}.`);
     }
 
-    const payload = (await response.json()) as SerpApiResponse;
+    let payload: SerpApiResponse;
+
+    try {
+      payload = (await response.json()) as SerpApiResponse;
+    } catch {
+      throw new Error("No se pudo parsear la respuesta JSON del proveedor.");
+    }
 
     if (payload.error) {
       throw new Error(payload.error);
     }
 
-    return payload;
+    return {
+      payload,
+      requestUrl
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Timeout al consultar el proveedor web.");
+    }
+
+    if (error instanceof TypeError) {
+      throw new Error("Error de red o bloqueo al consultar el proveedor web.");
+    }
+
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -208,20 +239,50 @@ export const serpApiProductsProvider: ProductProvider = {
     );
     const errors: ProviderError[] = [];
     const offers: ProviderProductOffer[] = [];
+    const debugEntries: ProviderQueryDebug[] = [];
     const resultLimit = getEnvNumber("SERPAPI_RESULT_LIMIT", defaultResultLimit);
 
     for (const query of queries) {
+      const consultedSources = new Set<string>();
+      const discarded: ProviderQueryDebug["discarded"] = [];
+      const queryErrors: string[] = [];
+
       try {
-        const payload = await schedule(() => fetchSerpApiResults(query));
+        const { payload, requestUrl } = await schedule(() => fetchSerpApiResults(query));
         const results = payload.shopping_results?.slice(0, resultLimit) ?? [];
         let addedOffers = 0;
+        console.info("[products][serpapi] search:start", {
+          product: query.trim(),
+          requestUrl,
+          resultLimit
+        });
 
         if (results.length === 0) {
+          queryErrors.push("La busqueda no devolvio resultados.");
           errors.push({
             providerId: serpApiProviderId,
             providerLabel: "SerpApi Google Shopping",
             message: "La busqueda no devolvio resultados.",
             query: query.trim()
+          });
+          debugEntries.push({
+            product: query.trim(),
+            providerId: serpApiProviderId,
+            providerLabel: "SerpApi Google Shopping",
+            searched: true,
+            requestUrl,
+            consultedSources: [],
+            resultCount: 0,
+            acceptedCount: 0,
+            discardedCount: 0,
+            discarded: [],
+            errors: queryErrors,
+            usedMockData: false,
+            failureStage: "no_results"
+          });
+          console.warn("[products][serpapi] search:empty", {
+            product: query.trim(),
+            requestUrl
           });
           continue;
         }
@@ -229,8 +290,55 @@ export const serpApiProductsProvider: ProductProvider = {
         for (const result of results) {
           const price = Number(result.extracted_price);
           const url = normalizeUrl(result.product_link || "");
+          const source = result.source?.trim() || "Google Shopping";
+          consultedSources.add(source);
+          console.info("[products][serpapi] search:result", {
+            product: query.trim(),
+            source,
+            url,
+            extractedPrice: result.extracted_price
+          });
 
-          if (!Number.isFinite(price) || !url || !isSpanishStore(result, url)) {
+          if (!Number.isFinite(price)) {
+            discarded.push({
+              source,
+              url,
+              reason: "Precio invalido o no parseable."
+            });
+            console.warn("[products][serpapi] search:discarded", {
+              product: query.trim(),
+              source,
+              url,
+              reason: "Precio invalido o no parseable."
+            });
+            continue;
+          }
+
+          if (!url) {
+            discarded.push({
+              source,
+              reason: "Resultado sin URL valida."
+            });
+            console.warn("[products][serpapi] search:discarded", {
+              product: query.trim(),
+              source,
+              reason: "Resultado sin URL valida."
+            });
+            continue;
+          }
+
+          if (!isSpanishStore(result, url)) {
+            discarded.push({
+              source,
+              url,
+              reason: "Descartado por no cumplir las senales de tienda espanola."
+            });
+            console.warn("[products][serpapi] search:discarded", {
+              product: query.trim(),
+              source,
+              url,
+              reason: "Descartado por no cumplir las senales de tienda espanola."
+            });
             continue;
           }
 
@@ -246,6 +354,7 @@ export const serpApiProductsProvider: ProductProvider = {
         }
 
         if (addedOffers === 0) {
+          queryErrors.push("No se encontraron tiendas espanolas para este producto.");
           errors.push({
             providerId: serpApiProviderId,
             providerLabel: "SerpApi Google Shopping",
@@ -253,8 +362,47 @@ export const serpApiProductsProvider: ProductProvider = {
             query: query.trim()
           });
         }
+
+        debugEntries.push({
+          product: query.trim(),
+          providerId: serpApiProviderId,
+          providerLabel: "SerpApi Google Shopping",
+          searched: true,
+          requestUrl,
+          consultedSources: Array.from(consultedSources),
+          resultCount: results.length,
+          acceptedCount: addedOffers,
+          discardedCount: discarded.length,
+          discarded,
+          errors: queryErrors,
+          usedMockData: false,
+          failureStage:
+            addedOffers === 0
+              ? discarded.length > 0
+                ? "filters"
+                : "no_results"
+              : "none"
+        });
+        console.info("[products][serpapi] search:summary", {
+          product: query.trim(),
+          requestUrl,
+          resultsFound: results.length,
+          acceptedResults: addedOffers,
+          discardedResults: discarded.length,
+          consultedSources: Array.from(consultedSources)
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Error desconocido.";
+        queryErrors.push(message);
+        const failureStage = message.includes("Timeout")
+          ? "network"
+          : message.includes("HTTP")
+            ? "http"
+            : message.includes("parsear")
+              ? "parsing"
+              : message.includes("red") || message.includes("bloqueo")
+                ? "network"
+                : "http";
 
         errors.push({
           providerId: serpApiProviderId,
@@ -262,12 +410,31 @@ export const serpApiProductsProvider: ProductProvider = {
           message,
           query: query.trim()
         });
+        debugEntries.push({
+          product: query.trim(),
+          providerId: serpApiProviderId,
+          providerLabel: "SerpApi Google Shopping",
+          searched: true,
+          consultedSources: Array.from(consultedSources),
+          resultCount: 0,
+          acceptedCount: 0,
+          discardedCount: discarded.length,
+          discarded,
+          errors: queryErrors,
+          usedMockData: false,
+          failureStage
+        });
+        console.error("[products][serpapi] search:error", {
+          product: query.trim(),
+          error: message
+        });
       }
     }
 
     return {
       offers,
-      errors
+      errors,
+      debugEntries
     };
   }
 };
