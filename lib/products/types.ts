@@ -21,6 +21,7 @@ export type ProviderQueryDebug = {
   providerId: string;
   providerLabel: string;
   searched: boolean;
+  searchEngine?: string;
   debugPreviewQuery?: string;
   debugPreviewLinks?: Array<{
     href: string;

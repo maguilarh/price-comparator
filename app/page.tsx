@@ -44,6 +44,7 @@ type ComparisonResponse = {
       providerId: string;
       providerLabel: string;
       searched: boolean;
+      searchEngine?: string;
       debugPreviewQuery?: string;
       debugPreviewLinks?: Array<{
         href: string;
@@ -498,6 +499,7 @@ export default function HomePage() {
                   <p>
                     Proveedor: {entry.providerLabel} | Busqueda web: {entry.searched ? "Si" : "No"}
                   </p>
+                  <p>Motor de busqueda: {entry.searchEngine || "n/d"}</p>
                   {entry.debugPreviewQuery ? (
                     <div className="debug-subpanel">
                       <strong>Vista previa sin filtros</strong>
