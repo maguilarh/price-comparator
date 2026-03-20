@@ -1,0 +1,128 @@
+# Proyecto base Next.js + TypeScript
+
+Base inicial con:
+
+- Next.js con App Router
+- TypeScript
+- Página principal
+- Formulario para introducir productos
+- Endpoint backend para comparar productos y elegir el mejor precio
+- Arquitectura backend desacoplada por proveedores
+- Proveedor real opcional con SerpApi y rate limiting basico
+
+## Arranque
+
+```bash
+npm install
+npm run dev
+```
+
+La aplicación quedará disponible en `http://localhost:3000`.
+
+## Endpoint backend
+
+Disponible en `POST /api/products`.
+
+La ruta usa un servicio de comparacion y un registro de proveedores desacoplados:
+
+- [app/api/products/route.ts](/Users/E052966/Desktop/Codex_1/app/api/products/route.ts): valida la request y orquesta la respuesta HTTP
+- [lib/products/comparison-service.ts](/Users/E052966/Desktop/Codex_1/lib/products/comparison-service.ts): unifica ofertas y calcula el mejor precio
+- [lib/products/providers/index.ts](/Users/E052966/Desktop/Codex_1/lib/products/providers/index.ts): registro de proveedores activos
+- [lib/products/providers/manual-provider.ts](/Users/E052966/Desktop/Codex_1/lib/products/providers/manual-provider.ts): proveedor manual actual
+- [lib/products/providers/serpapi-provider.ts](/Users/E052966/Desktop/Codex_1/lib/products/providers/serpapi-provider.ts): proveedor real contra Google Shopping via SerpApi
+- [lib/products/rate-limiter.ts](/Users/E052966/Desktop/Codex_1/lib/products/rate-limiter.ts): limitador basico en memoria entre llamadas a proveedores
+
+Para añadir un nuevo proveedor, basta con implementar `fetchOffers` y registrarlo en el índice de proveedores.
+
+## Proveedor real
+
+Se ha añadido un proveedor desacoplado basado en la API oficial de SerpApi para Google Shopping.
+
+Variables de entorno soportadas:
+
+- `SERPAPI_KEY`: activa el proveedor real
+- `PRODUCT_PROVIDER_IDS`: lista separada por comas para elegir proveedores, por ejemplo `manual,serpapi`
+- `SERPAPI_LOCATION`: ubicacion opcional para afinar resultados
+- `SERPAPI_GL`: pais, por defecto `es`
+- `SERPAPI_HL`: idioma, por defecto `es`
+- `SERPAPI_TIMEOUT_MS`: timeout por request, por defecto `8000`
+- `SERPAPI_MIN_INTERVAL_MS`: pausa minima entre requests, por defecto `300`
+- `SERPAPI_RESULT_LIMIT`: numero maximo de ofertas por busqueda, por defecto `3`
+
+Comportamiento:
+
+- Si el proveedor externo falla, la API sigue respondiendo con los resultados de otros proveedores.
+- Los errores externos se devuelven en `providerErrors`.
+- El rate limiting actual es basico y en memoria del proceso.
+
+Agrupa productos por nombre y elige la mejor opcion segun estas reglas:
+
+- Menor precio
+- Si hay empate, mayor stock
+- Si persiste el empate, orden alfabetico por proveedor
+
+Ejemplo de request:
+
+```json
+{
+  "products": [
+    {
+      "name": "Camiseta basica",
+      "description": "Camiseta de algodon",
+      "price": 19.99,
+      "category": "ropa",
+      "stock": 12,
+      "supplier": "Tienda Centro"
+    },
+    {
+      "name": "Camiseta basica",
+      "description": "Camiseta de algodon organico",
+      "price": 17.5,
+      "category": "ropa",
+      "stock": 8,
+      "supplier": "Outlet Textil"
+    }
+  ]
+}
+```
+
+Ejemplo de respuesta:
+
+```json
+{
+  "ok": true,
+  "processedAt": "2026-03-20T10:00:00.000Z",
+  "totalProductsReceived": 2,
+  "uniqueProductsCompared": 1,
+  "comparisons": [
+    {
+      "productName": "Camiseta basica",
+      "category": "ropa",
+      "bestOption": {
+        "supplier": "Outlet Textil",
+        "price": 17.5,
+        "stock": 8,
+        "description": "Camiseta de algodon organico"
+      },
+      "comparedOptions": 2,
+      "priceRange": {
+        "min": 17.5,
+        "max": 19.99,
+        "savingsVsHighest": 2.49
+      },
+      "allOptions": [
+        {
+          "supplier": "Outlet Textil",
+          "price": 17.5,
+          "stock": 8
+        },
+        {
+          "supplier": "Tienda Centro",
+          "price": 19.99,
+          "stock": 12
+        }
+      ]
+    }
+  ]
+}
+```
