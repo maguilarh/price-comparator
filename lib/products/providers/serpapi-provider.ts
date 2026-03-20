@@ -69,7 +69,13 @@ function normalizeUrl(url: string) {
 }
 
 function buildRequestUrl(params: URLSearchParams) {
-  return `${apiBaseUrl}?${params.toString()}`;
+  const sanitizedParams = new URLSearchParams(params);
+
+  if (sanitizedParams.has("api_key")) {
+    sanitizedParams.set("api_key", "***");
+  }
+
+  return `${apiBaseUrl}?${sanitizedParams.toString()}`;
 }
 
 function normalizeText(value: string) {
@@ -178,7 +184,7 @@ async function fetchSerpApiResults(query: ProductQuery) {
   const requestUrl = buildRequestUrl(params);
 
   try {
-    const response = await fetch(requestUrl, {
+    const response = await fetch(`${apiBaseUrl}?${params.toString()}`, {
       method: "GET",
       signal: controller.signal,
       headers: {

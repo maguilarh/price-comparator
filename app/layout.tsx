@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Gestor de productos",
-  description: "Proyecto base en Next.js con formulario de productos"
+  description: "Comparador de productos con busqueda web real desde backend"
 };
 
 export default function RootLayout({

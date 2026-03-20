@@ -30,6 +30,10 @@ type ComparisonResponse = {
   debug?: {
     requestedProducts?: string[];
     providerIds?: string[];
+    activeProviders?: Array<{
+      id: string;
+      label: string;
+    }>;
     searchExecution?: string;
     frontendExternalRequests?: boolean;
     corsLikelyIssue?: boolean;
@@ -155,7 +159,11 @@ export default function HomePage() {
         return;
       }
 
-      setStatusMessage("Comparacion completada. Ya tienes hasta 10 tiendas por producto.");
+      setStatusMessage(
+        data.comparisons.length < products.length
+          ? "Comparacion completada con resultados parciales. Revisa que productos no devolvieron tiendas."
+          : "Comparacion completada. Ya tienes hasta 10 tiendas por producto."
+      );
     } catch {
       setComparisons([]);
       setProviderErrors([]);
@@ -203,6 +211,10 @@ export default function HomePage() {
               : detectedFailureStage === "mock"
                 ? "Proveedor sin busqueda web real"
                 : null;
+  const missingProducts =
+    debugData?.requestedProducts?.filter(
+      (product) => !comparisons.some((comparison) => comparison.productName === product)
+    ) || [];
 
   return (
     <main className="page">
@@ -276,6 +288,10 @@ export default function HomePage() {
           </div>
 
           <div className="debug-hint">
+            <strong>Proveedor activo:</strong>{" "}
+            {debugData?.activeProviders?.map((provider) => provider.label).join(", ") ||
+              "sin ejecutar aun"}
+            {" | "}
             <strong>Ubicacion de la busqueda:</strong>{" "}
             {debugData?.searchExecution === "backend"
               ? "backend"
@@ -289,8 +305,8 @@ export default function HomePage() {
 
           {debugData?.mockDataActive ? (
             <p className="warning-banner">
-              Aviso: hay proveedores sin busqueda web real activa. Si solo ves "Carga manual",
-              la app no esta consultando resultados reales en internet.
+              Aviso: el modo testing/mock esta activo. El proveedor manual solo debe usarse
+              cuando `USE_MOCK=true`.
             </p>
           ) : null}
 
@@ -349,63 +365,71 @@ export default function HomePage() {
         </div>
 
         {comparisons.length > 0 ? (
-          <div className="table-wrap">
-            <table className="results-table grouped-results-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Tienda</th>
-                  <th>Precio</th>
-                  <th>Disponibilidad</th>
-                  <th>Enlace</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comparisons.map((comparison) => (
-                  <Fragment key={comparison.productName}>
-                    <tr className="product-group-row">
-                      <td colSpan={5}>
-                        <div className="product-group-header">
-                          <div>
-                            <p className="store-label">Producto</p>
-                            <strong>{comparison.productName}</strong>
+          <>
+            {missingProducts.length > 0 ? (
+              <p className="warning-banner">
+                Sin resultados para: <strong>{missingProducts.join(", ")}</strong>. Consulta el
+                modo debug para ver el motivo exacto por producto.
+              </p>
+            ) : null}
+            <div className="table-wrap">
+              <table className="results-table grouped-results-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Tienda</th>
+                    <th>Precio</th>
+                    <th>Disponibilidad</th>
+                    <th>Enlace</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {comparisons.map((comparison) => (
+                    <Fragment key={comparison.productName}>
+                      <tr className="product-group-row">
+                        <td colSpan={5}>
+                          <div className="product-group-header">
+                            <div>
+                              <p className="store-label">Producto</p>
+                              <strong>{comparison.productName}</strong>
+                            </div>
+                            <span className="result-count">
+                              {comparison.stores.length} tienda{comparison.stores.length === 1 ? "" : "s"}
+                            </span>
                           </div>
-                          <span className="result-count">
-                            {comparison.stores.length} tienda{comparison.stores.length === 1 ? "" : "s"}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                    {comparison.stores.map((store, index) => (
-                      <tr
-                        key={`${comparison.productName}-${store.providerId}-${store.supplier}`}
-                        className="product-store-row"
-                      >
-                        <td>{index + 1}</td>
-                        <td>
-                          <strong>{store.supplier}</strong>
-                        </td>
-                        <td>{store.price.toFixed(2)} EUR</td>
-                        <td>
-                          <span className="availability-pill">{store.availability}</span>
-                        </td>
-                        <td>
-                          <a
-                            href={store.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="result-link"
-                          >
-                            Ver oferta
-                          </a>
                         </td>
                       </tr>
-                    ))}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      {comparison.stores.map((store, index) => (
+                        <tr
+                          key={`${comparison.productName}-${store.providerId}-${store.supplier}`}
+                          className="product-store-row"
+                        >
+                          <td>{index + 1}</td>
+                          <td>
+                            <strong>{store.supplier}</strong>
+                          </td>
+                          <td>{store.price.toFixed(2)} EUR</td>
+                          <td>
+                            <span className="availability-pill">{store.availability}</span>
+                          </td>
+                          <td>
+                            <a
+                              href={store.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="result-link"
+                            >
+                              Ver oferta
+                            </a>
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         ) : (
           <div className="empty-state">
             <p>
@@ -428,10 +452,14 @@ export default function HomePage() {
             <div className="debug-panel">
               <div className="debug-summary">
                 <span>Busqueda web: {debugData.webSearchAttempted ? "Si" : "No"}</span>
+                <span>
+                  Proveedores:{" "}
+                  {debugData.activeProviders?.map((provider) => provider.label).join(", ") || "n/d"}
+                </span>
                 <span>Ejecucion: {debugData.searchExecution || "n/d"}</span>
                 <span>Frontend externo: {debugData.frontendExternalRequests ? "Si" : "No"}</span>
                 <span>CORS probable: {debugData.corsLikelyIssue ? "Si" : "No"}</span>
-                <span>Mock activo: {debugData.mockDataActive ? "Si" : "No"}</span>
+                <span>Modo mock/testing: {debugData.mockDataActive ? "Si" : "No"}</span>
                 <span>Resultados aceptados: {debugData.totals?.resultsAccepted ?? 0}</span>
                 <span>Resultados descartados: {debugData.totals?.resultsDiscarded ?? 0}</span>
               </div>

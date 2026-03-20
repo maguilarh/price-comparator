@@ -119,6 +119,10 @@ export async function compareProductsFromProviders({
     debug: {
       requestedProducts: queries,
       providerIds,
+      activeProviders: providers.map((provider) => ({
+        id: provider.id,
+        label: provider.label
+      })),
       searchExecution: "backend",
       frontendExternalRequests: false,
       corsLikelyIssue: false,
