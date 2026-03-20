@@ -5,8 +5,8 @@ Base inicial con:
 - Next.js con App Router
 - TypeScript
 - Página principal
-- Formulario para introducir productos
-- Endpoint backend para comparar productos y elegir el mejor precio
+- Formulario para introducir nombres de productos
+- Endpoint backend para comparar productos a partir de sus nombres y elegir el mejor precio
 - Arquitectura backend desacoplada por proveedores
 - Proveedor real opcional con SerpApi y rate limiting basico
 
@@ -54,35 +54,19 @@ Comportamiento:
 - Si el proveedor externo falla, la API sigue respondiendo con los resultados de otros proveedores.
 - Los errores externos se devuelven en `providerErrors`.
 - El rate limiting actual es basico y en memoria del proceso.
+- Las busquedas del proveedor real se orientan a Espana y se filtran usando senales como dominio `.es`, moneda EUR y textos de direccion o envio a Espana.
 
-Agrupa productos por nombre y elige la mejor opcion segun estas reglas:
+Agrupa resultados por tienda y resume sus ofertas segun estas reglas:
 
-- Menor precio
-- Si hay empate, mayor stock
-- Si persiste el empate, orden alfabetico por proveedor
+- Suma el precio de las ofertas encontradas por tienda
+- Calcula el precio medio por tienda
+- Destaca la mejor oferta individual de cada tienda por menor precio
 
 Ejemplo de request:
 
 ```json
 {
-  "products": [
-    {
-      "name": "Camiseta basica",
-      "description": "Camiseta de algodon",
-      "price": 19.99,
-      "category": "ropa",
-      "stock": 12,
-      "supplier": "Tienda Centro"
-    },
-    {
-      "name": "Camiseta basica",
-      "description": "Camiseta de algodon organico",
-      "price": 17.5,
-      "category": "ropa",
-      "stock": 8,
-      "supplier": "Outlet Textil"
-    }
-  ]
+  "products": ["Camiseta basica", "Auriculares bluetooth"]
 }
 ```
 
@@ -93,35 +77,20 @@ Ejemplo de respuesta:
   "ok": true,
   "processedAt": "2026-03-20T10:00:00.000Z",
   "totalProductsReceived": 2,
-  "uniqueProductsCompared": 1,
+  "uniqueStoresCompared": 1,
+  "providerCount": 1,
   "comparisons": [
     {
-      "productName": "Camiseta basica",
-      "category": "ropa",
-      "bestOption": {
-        "supplier": "Outlet Textil",
-        "price": 17.5,
-        "stock": 8,
-        "description": "Camiseta de algodon organico"
-      },
-      "comparedOptions": 2,
-      "priceRange": {
-        "min": 17.5,
-        "max": 19.99,
-        "savingsVsHighest": 2.49
-      },
-      "allOptions": [
-        {
-          "supplier": "Outlet Textil",
-          "price": 17.5,
-          "stock": 8
-        },
-        {
-          "supplier": "Tienda Centro",
-          "price": 19.99,
-          "stock": 12
-        }
-      ]
+      "supplier": "Google Shopping",
+      "providerId": "serpapi",
+      "totalProducts": 2,
+      "totalPrice": 32.49,
+      "averagePrice": 16.25,
+      "bestOffer": {
+        "productName": "Camiseta basica",
+        "price": 14.99,
+        "url": "https://tienda.com/camiseta"
+      }
     }
   ]
 }

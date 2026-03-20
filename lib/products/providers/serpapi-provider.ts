@@ -25,9 +25,36 @@ type SerpApiResponse = {
 const apiBaseUrl = "https://serpapi.com/search.json";
 const defaultResultLimit = 3;
 const defaultMinIntervalMs = 300;
+const spanishDomainSuffixes = [".es"];
+const euroCurrencySignals = ["eur", "euro", "euros", "€"];
+const spanishAddressSignals = [
+  "espana",
+  "españa",
+  "spain",
+  "madrid",
+  "barcelona",
+  "valencia",
+  "sevilla",
+  "bilbao",
+  "zaragoza",
+  "malaga",
+  "alicante",
+  "codigo postal",
+  "cp "
+];
+const spanishShippingSignals = [
+  "envio a espana",
+  "envio en espana",
+  "entrega en espana",
+  "entrega en peninsula",
+  "envio peninsula",
+  "enviado desde espana",
+  "shipping to spain",
+  "ships to spain"
+];
 
 function getSearchQuery(query: ProductQuery) {
-  return [query.name, query.category].filter(Boolean).join(" ");
+  return `${query.trim()} tienda Espana`;
 }
 
 function getEnvNumber(name: string, fallback: number) {
@@ -38,6 +65,59 @@ function getEnvNumber(name: string, fallback: number) {
 
 function normalizeUrl(url: string) {
   return url.trim();
+}
+
+function normalizeText(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function getHostname(url: string) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function isSpanishHost(hostname: string) {
+  if (!hostname) {
+    return false;
+  }
+
+  return spanishDomainSuffixes.some((suffix) => hostname.endsWith(suffix));
+}
+
+function hasEuroSignal(result: SerpApiShoppingResult) {
+  const normalizedPrice = normalizeText(result.price || "");
+  return euroCurrencySignals.some((signal) => normalizedPrice.includes(signal));
+}
+
+function hasSpanishAddressSignal(result: SerpApiShoppingResult) {
+  const searchableText = normalizeText(
+    [result.title, result.source, result.snippet].filter(Boolean).join(" ")
+  );
+
+  return spanishAddressSignals.some((signal) => searchableText.includes(signal));
+}
+
+function hasSpanishShippingSignal(result: SerpApiShoppingResult) {
+  const searchableText = normalizeText(
+    [result.title, result.source, result.snippet].filter(Boolean).join(" ")
+  );
+
+  return spanishShippingSignals.some((signal) => searchableText.includes(signal));
+}
+
+function isSpanishStore(result: SerpApiShoppingResult, url: string) {
+  const hostname = getHostname(url);
+  const hasSpanishSignals =
+    hasEuroSignal(result) && (hasSpanishAddressSignal(result) || hasSpanishShippingSignal(result));
+
+  return isSpanishHost(hostname) || hasSpanishSignals;
 }
 
 async function fetchSerpApiResults(query: ProductQuery) {
@@ -55,7 +135,7 @@ async function fetchSerpApiResults(query: ProductQuery) {
     gl: process.env.SERPAPI_GL || "es"
   });
 
-  const location = process.env.SERPAPI_LOCATION;
+  const location = process.env.SERPAPI_LOCATION || "Spain";
 
   if (location) {
     params.set("location", location);
@@ -107,34 +187,42 @@ export const serpApiProductsProvider: ProductProvider = {
       try {
         const payload = await schedule(() => fetchSerpApiResults(query));
         const results = payload.shopping_results?.slice(0, resultLimit) ?? [];
+        let addedOffers = 0;
 
         if (results.length === 0) {
           errors.push({
             providerId: serpApiProviderId,
             providerLabel: "SerpApi Google Shopping",
             message: "La busqueda no devolvio resultados.",
-            query: query.name
+            query: query.trim()
           });
           continue;
         }
 
         for (const result of results) {
           const price = Number(result.extracted_price);
-          const url = normalizeUrl(result.product_link || query.url || "");
+          const url = normalizeUrl(result.product_link || "");
 
-          if (!Number.isFinite(price) || !url) {
+          if (!Number.isFinite(price) || !url || !isSpanishStore(result, url)) {
             continue;
           }
 
           offers.push({
             providerId: serpApiProviderId,
             supplier: result.source?.trim() || "Google Shopping",
-            name: query.name.trim(),
-            description: result.snippet?.trim() || query.description.trim(),
-            category: query.category.trim(),
+            name: query.trim(),
             price,
-            stock: Number(query.stock),
             url
+          });
+          addedOffers += 1;
+        }
+
+        if (addedOffers === 0) {
+          errors.push({
+            providerId: serpApiProviderId,
+            providerLabel: "SerpApi Google Shopping",
+            message: "No se encontraron tiendas espanolas para este producto.",
+            query: query.trim()
           });
         }
       } catch (error) {
@@ -144,7 +232,7 @@ export const serpApiProductsProvider: ProductProvider = {
           providerId: serpApiProviderId,
           providerLabel: "SerpApi Google Shopping",
           message,
-          query: query.name
+          query: query.trim()
         });
       }
     }

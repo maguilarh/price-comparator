@@ -13,16 +13,22 @@ type CompareProductsParams = {
 
 type ComparableOffer = ProviderProductOffer & {
   normalizedName: string;
+  normalizedSupplier: string;
 };
 
 function normalizeProductName(name: string) {
   return name.trim().toLowerCase();
 }
 
+function normalizeSupplierName(name: string) {
+  return name.trim().toLowerCase();
+}
+
 function toComparableOffer(offer: ProviderProductOffer): ComparableOffer {
   return {
     ...offer,
-    normalizedName: normalizeProductName(offer.name)
+    normalizedName: normalizeProductName(offer.name),
+    normalizedSupplier: normalizeSupplierName(offer.supplier)
   };
 }
 
@@ -32,57 +38,67 @@ function chooseBestOption(products: ComparableOffer[]) {
       return left.price - right.price;
     }
 
-    if (left.stock !== right.stock) {
-      return right.stock - left.stock;
-    }
-
     return left.supplier.localeCompare(right.supplier);
   })[0];
 }
 
-function buildComparisons(offers: ComparableOffer[]): ProductComparisonResult[] {
+function getUniqueRequestedProducts(queries: ProductQuery[]) {
+  return Array.from(new Set(queries.map((query) => normalizeProductName(query))));
+}
+
+function buildComparisons(
+  offers: ComparableOffer[],
+  requestedProducts: string[]
+): ProductComparisonResult[] {
   const groupedProducts = new Map<string, ComparableOffer[]>();
 
   for (const offer of offers) {
-    const group = groupedProducts.get(offer.normalizedName) ?? [];
+    const group = groupedProducts.get(offer.normalizedSupplier) ?? [];
     group.push(offer);
-    groupedProducts.set(offer.normalizedName, group);
+    groupedProducts.set(offer.normalizedSupplier, group);
   }
 
-  return Array.from(groupedProducts.values()).map((group) => {
-    const bestOption = chooseBestOption(group);
-    const prices = group.map((offer) => offer.price);
-    const minPrice = Math.min(...prices);
-    const maxPrice = Math.max(...prices);
+  return Array.from(groupedProducts.values())
+    .map((group) => {
+      const offersByProduct = new Map<string, ComparableOffer[]>();
 
-    return {
-      productName: bestOption.name,
-      category: bestOption.category,
-      bestOption: {
-        providerId: bestOption.providerId,
+      for (const offer of group) {
+        const productOffers = offersByProduct.get(offer.normalizedName) ?? [];
+        productOffers.push(offer);
+        offersByProduct.set(offer.normalizedName, productOffers);
+      }
+
+      if (requestedProducts.some((product) => !offersByProduct.has(product))) {
+        return null;
+      }
+
+      const selectedOffers = requestedProducts.map((product) =>
+        chooseBestOption(offersByProduct.get(product) ?? [])
+      );
+      const bestOption = chooseBestOption(selectedOffers);
+      const totalPrice = selectedOffers.reduce((sum, offer) => sum + offer.price, 0);
+
+      return {
         supplier: bestOption.supplier,
-        price: bestOption.price,
-        stock: bestOption.stock,
-        description: bestOption.description,
-        url: bestOption.url
-      },
-      comparedOptions: group.length,
-      priceRange: {
-        min: minPrice,
-        max: maxPrice,
-        savingsVsHighest: Number((maxPrice - minPrice).toFixed(2))
-      },
-      allOptions: group
-        .map((offer) => ({
-          providerId: offer.providerId,
-          supplier: offer.supplier,
-          price: offer.price,
-          stock: offer.stock,
-          url: offer.url
-        }))
-        .sort((left, right) => left.price - right.price)
-    };
-  });
+        providerId: bestOption.providerId,
+        totalProducts: selectedOffers.length,
+        totalPrice: Number(totalPrice.toFixed(2)),
+        averagePrice: Number((totalPrice / selectedOffers.length).toFixed(2)),
+        bestOffer: {
+          productName: bestOption.name,
+          price: bestOption.price,
+          url: bestOption.url
+        }
+      };
+    })
+    .filter((comparison): comparison is ProductComparisonResult => comparison !== null)
+    .sort((left, right) => {
+      if (left.totalPrice !== right.totalPrice) {
+        return left.totalPrice - right.totalPrice;
+      }
+
+      return left.supplier.localeCompare(right.supplier);
+    });
 }
 
 export async function compareProductsFromProviders({
@@ -102,11 +118,12 @@ export async function compareProductsFromProviders({
   const comparableOffers = resultsByProvider
     .flatMap((result) => result.offers)
     .map(toComparableOffer);
+  const requestedProducts = getUniqueRequestedProducts(queries);
   const providerErrors: ProviderError[] = resultsByProvider.flatMap((result) => result.errors);
 
   return {
     providerCount: providers.length,
     providerErrors,
-    comparisons: buildComparisons(comparableOffers)
+    comparisons: buildComparisons(comparableOffers, requestedProducts)
   };
 }

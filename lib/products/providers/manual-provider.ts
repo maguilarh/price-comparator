@@ -1,7 +1,7 @@
 import {
   ProductProvider,
   ProductQuery,
-  ProviderProductOffer
+  ProviderError
 } from "@/lib/products/types";
 
 export const manualProviderId = "manual";
@@ -10,18 +10,17 @@ export const manualProductsProvider: ProductProvider = {
   id: manualProviderId,
   label: "Carga manual",
   async fetchOffers(queries: ProductQuery[]) {
+    const errors: ProviderError[] = queries.map((query) => ({
+      providerId: manualProviderId,
+      providerLabel: "Carga manual",
+      message:
+        "La carga manual ya no genera ofertas sin precio ni stock. Configura un proveedor externo para obtener resultados.",
+      query: query.trim()
+    }));
+
     return {
-      offers: queries.map((query, index) => ({
-        providerId: manualProviderId,
-        supplier: query.supplier?.trim() || `Proveedor ${index + 1}`,
-        name: query.name.trim(),
-        description: query.description.trim(),
-        category: query.category.trim(),
-        price: Number(query.price),
-        stock: Number(query.stock),
-        url: query.url?.trim() || ""
-      })),
-      errors: []
+      offers: [],
+      errors
     };
   }
 };

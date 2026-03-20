@@ -4,39 +4,18 @@ import { ChangeEvent, FormEvent, useState } from "react";
 
 type ProductFormData = {
   name: string;
-  description: string;
-  price: string;
-  category: string;
-  stock: string;
-  supplier: string;
-  url: string;
-};
-
-type ProductPayload = {
-  name: string;
-  description: string;
-  price: number;
-  category: string;
-  stock: number;
-  supplier: string;
-  url: string;
 };
 
 type ComparisonResult = {
-  productName: string;
-  category: string;
-  bestOption: {
-    supplier: string;
+  supplier: string;
+  providerId: string;
+  totalProducts: number;
+  totalPrice: number;
+  averagePrice: number;
+  bestOffer: {
+    productName: string;
     price: number;
-    stock: number;
-    description: string;
     url: string;
-  };
-  comparedOptions: number;
-  priceRange: {
-    min: number;
-    max: number;
-    savingsVsHighest: number;
   };
 };
 
@@ -47,25 +26,20 @@ type ComparisonResponse = {
 };
 
 const initialForm: ProductFormData = {
-  name: "",
-  description: "",
-  price: "",
-  category: "",
-  stock: "",
-  supplier: "",
-  url: ""
+  name: ""
 };
 
 export default function HomePage() {
   const [formData, setFormData] = useState<ProductFormData>(initialForm);
-  const [products, setProducts] = useState<ProductPayload[]>([]);
+  const [products, setProducts] = useState<string[]>([]);
   const [comparisons, setComparisons] = useState<ComparisonResult[]>([]);
-  const [statusMessage, setStatusMessage] = useState("Añade varias ofertas y compara el mejor precio.");
+  const [statusMessage, setStatusMessage] = useState(
+    "Añade varios nombres de producto y compara el mejor precio."
+  );
   const [isLoading, setIsLoading] = useState(false);
+  const cheapestTotal = comparisons.length > 0 ? comparisons[0].totalPrice : null;
 
-  const handleChange = (
-    event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => {
+  const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     const { name, value } = event.target;
     setFormData((current) => ({ ...current, [name]: value }));
   };
@@ -73,24 +47,28 @@ export default function HomePage() {
   const handleAddProduct = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const newProduct: ProductPayload = {
-      name: formData.name.trim(),
-      description: formData.description.trim(),
-      price: Number(formData.price),
-      category: formData.category,
-      stock: Number(formData.stock),
-      supplier: formData.supplier.trim(),
-      url: formData.url.trim()
-    };
+    const productNames = formData.name
+      .split("\n")
+      .map((value) => value.trim())
+      .filter(Boolean);
 
-    setProducts((current) => [...current, newProduct]);
+    if (productNames.length === 0) {
+      setStatusMessage("Introduce al menos un nombre de producto valido.");
+      return;
+    }
+
+    setProducts((current) => [...current, ...productNames]);
     setFormData(initialForm);
-    setStatusMessage("Oferta añadida. Puedes seguir cargando más tiendas o comparar ahora.");
+    setStatusMessage(
+      productNames.length === 1
+        ? "Producto añadido. Puedes seguir cargando mas nombres o comparar ahora."
+        : `${productNames.length} productos añadidos. Puedes seguir cargando mas nombres o comparar ahora.`
+    );
   };
 
   const handleCompare = async () => {
     if (products.length === 0) {
-      setStatusMessage("Necesitas al menos una oferta para comparar.");
+      setStatusMessage("Necesitas al menos un producto para comparar.");
       return;
     }
 
@@ -115,7 +93,9 @@ export default function HomePage() {
       }
 
       setComparisons(data.comparisons);
-      setStatusMessage("Comparacion completada. Ya tienes la mejor tienda por producto.");
+      setStatusMessage(
+        "Comparacion completada. Solo se muestran tiendas con el catalogo completo."
+      );
     } catch {
       setComparisons([]);
       setStatusMessage("Ha ocurrido un error al llamar al endpoint.");
@@ -128,119 +108,36 @@ export default function HomePage() {
     <main className="page">
       <section className="hero">
         <p className="eyebrow">Comparador de precios</p>
-        <h1>Encuentra la mejor tienda para cada producto</h1>
+        <h1>Compara resultados agrupados por tienda</h1>
         <p className="lead">
-          Registra varias ofertas del mismo producto y compara sus precios para quedarte
-          con la mejor opcion. La tabla mostrara la tienda ganadora, el precio y su enlace.
+          Introduce los nombres de los productos que quieres consultar y compara los
+          resultados agrupados por tienda. La tabla solo mostrara tiendas con catalogo
+          completo, su suma total y la mejor oferta individual.
         </p>
       </section>
 
       <section className="grid">
         <article className="card">
           <div className="card-header">
-            <h2>Nueva oferta</h2>
-            <p>Introduce una oferta por tienda para luego compararla con las demas.</p>
+            <h2>Nuevos productos</h2>
+            <p>Introduce uno o varios nombres, uno por linea.</p>
           </div>
 
           <form className="product-form" onSubmit={handleAddProduct}>
             <label>
-              Producto
-              <input
+              Productos
+              <textarea
                 name="name"
-                type="text"
-                placeholder="Ej. Camiseta basica"
+                placeholder={"Ej. Camiseta basica\nAuriculares bluetooth\nCafe en grano"}
                 value={formData.name}
                 onChange={handleChange}
-                required
-              />
-            </label>
-
-            <label>
-              Descripción
-              <textarea
-                name="description"
-                placeholder="Describe el producto"
-                value={formData.description}
-                onChange={handleChange}
-                rows={4}
-                required
-              />
-            </label>
-
-            <div className="form-row">
-              <label>
-                Precio
-                <input
-                  name="price"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={formData.price}
-                  onChange={handleChange}
-                  required
-                />
-              </label>
-
-              <label>
-                Stock
-                <input
-                  name="stock"
-                  type="number"
-                  min="0"
-                  step="1"
-                  placeholder="0"
-                  value={formData.stock}
-                  onChange={handleChange}
-                  required
-                />
-              </label>
-            </div>
-
-            <div className="form-row">
-              <label>
-                Tienda
-                <input
-                  name="supplier"
-                  type="text"
-                  placeholder="Ej. Outlet Textil"
-                  value={formData.supplier}
-                  onChange={handleChange}
-                  required
-                />
-              </label>
-
-              <label>
-                Categoría
-                <select
-                  name="category"
-                  value={formData.category}
-                  onChange={handleChange}
-                  required
-                >
-                  <option value="">Selecciona una categoría</option>
-                  <option value="ropa">Ropa</option>
-                  <option value="electronica">Electrónica</option>
-                  <option value="hogar">Hogar</option>
-                  <option value="alimentacion">Alimentación</option>
-                </select>
-              </label>
-            </div>
-
-            <label>
-              Enlace
-              <input
-                name="url"
-                type="url"
-                placeholder="https://tienda.com/producto"
-                value={formData.url}
-                onChange={handleChange}
+                rows={5}
                 required
               />
             </label>
 
             <div className="actions">
-              <button type="submit">Añadir oferta</button>
+              <button type="submit">Añadir productos</button>
               <button
                 className="secondary-button"
                 type="button"
@@ -255,23 +152,22 @@ export default function HomePage() {
 
         <aside className="card preview">
           <div className="card-header">
-            <h2>Ofertas cargadas</h2>
+            <h2>Productos cargados</h2>
             <p>{statusMessage}</p>
           </div>
 
           {products.length > 0 ? (
             <ul className="offer-list">
               {products.map((product, index) => (
-                <li key={`${product.name}-${product.supplier}-${index}`}>
-                  <strong>{product.name}</strong>
-                  <span>{product.supplier}</span>
-                  <span>{product.price.toFixed(2)} EUR</span>
+                <li key={`${product}-${index}`}>
+                  <strong>{product}</strong>
+                  <span>Listo para comparar</span>
                 </li>
               ))}
             </ul>
           ) : (
             <p className="empty-state">
-              Todavia no hay ofertas cargadas. Añade varias para obtener una comparacion.
+              Todavia no hay productos cargados. Añade varios para obtener una comparacion.
             </p>
           )}
         </aside>
@@ -279,47 +175,62 @@ export default function HomePage() {
 
       <section className="card results-card">
         <div className="card-header">
-          <h2>Mejor precio por producto</h2>
-          <p>Resultado de la comparacion de ofertas por nombre de producto.</p>
+          <h2>Resumen por tienda</h2>
+          <p>Resultado de la comparacion de tiendas que cubren todo el catalogo solicitado.</p>
         </div>
 
         {comparisons.length > 0 ? (
-          <div className="table-wrap">
-            <table className="results-table">
-              <thead>
-                <tr>
-                  <th>Producto</th>
-                  <th>Mejor tienda</th>
-                  <th>Precio</th>
-                  <th>Enlace</th>
-                </tr>
-              </thead>
-              <tbody>
-                {comparisons.map((comparison) => (
-                  <tr key={`${comparison.productName}-${comparison.bestOption.supplier}`}>
-                    <td>
-                      <strong>{comparison.productName}</strong>
-                    </td>
-                    <td>{comparison.bestOption.supplier}</td>
-                    <td>{comparison.bestOption.price.toFixed(2)} EUR</td>
-                    <td>
-                      <a
-                        href={comparison.bestOption.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="result-link"
-                      >
-                        Ver oferta
-                      </a>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="store-results">
+            {comparisons.map((comparison) => {
+              const isCheapest = comparison.totalPrice === cheapestTotal;
+
+              return (
+                <article
+                  key={`${comparison.providerId}-${comparison.supplier}`}
+                  className={`store-card${isCheapest ? " store-card-featured" : ""}`}
+                >
+                  <div className="store-card-header">
+                    <div>
+                      <p className="store-label">Tienda</p>
+                      <h3>{comparison.supplier}</h3>
+                    </div>
+                    {isCheapest ? <span className="best-badge">Mas barata</span> : null}
+                  </div>
+
+                  <div className="store-total">
+                    <span>Total del carrito</span>
+                    <strong>{comparison.totalPrice.toFixed(2)} EUR</strong>
+                  </div>
+
+                  <div className="store-metrics">
+                    <div>
+                      <span>Productos</span>
+                      <strong>{comparison.totalProducts}</strong>
+                    </div>
+                    <div>
+                      <span>Media</span>
+                      <strong>{comparison.averagePrice.toFixed(2)} EUR</strong>
+                    </div>
+                  </div>
+
+                  <div className="store-offer">
+                    <span>Mejor oferta individual</span>
+                    <a
+                      href={comparison.bestOffer.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="result-link"
+                    >
+                      {comparison.bestOffer.productName} ({comparison.bestOffer.price.toFixed(2)} EUR)
+                    </a>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         ) : (
           <p className="empty-state">
-            La tabla se completara cuando compares las ofertas cargadas.
+            El resumen por tienda aparecera cuando compares los productos cargados.
           </p>
         )}
       </section>

@@ -11,8 +11,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            "Debes enviar `products` como una lista con `name`, `description`, `category`, `price`, `stock` y `url` validos."
+          error: "Debes enviar `products` como una lista de nombres de producto validos."
         },
         { status: 400 }
       );
@@ -27,7 +26,7 @@ export async function POST(request: Request) {
       ok: true,
       processedAt: new Date().toISOString(),
       totalProductsReceived: body.products.length,
-      uniqueProductsCompared: comparison.comparisons.length,
+      uniqueStoresCompared: comparison.comparisons.length,
       providerCount: comparison.providerCount,
       providerErrors: comparison.providerErrors,
       comparisons: comparison.comparisons
